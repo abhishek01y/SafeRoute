@@ -1,227 +1,252 @@
-# SafeRoute AI
+# 🛡️ SafeRoute AI
 
-SafeRoute AI is a **full-stack urban safety assistant** focused on Chandigarh, India. It combines:
+<div align="center">
 
-- **Static urban knowledge** (sector baselines, road types, night-time penalties)
-- **Live nearby infrastructure signals** (police, hospitals, shops from OpenStreetMap/Overpass)
-- **Recent news sentiment** (NewsAPI + optional OpenAI-assisted scoring)
-- **Community reports** (crowd-sourced incidents/safe signals via Supabase)
+### *Check Safety. Compare Routes. Stay Protected.*
 
-The app helps users check a location's safety score, compare route options, and trigger emergency alerts.
+[![Next.js](https://img.shields.io/badge/Next.js-14-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Python-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Supabase](https://img.shields.io/badge/Supabase-Cloud-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com)
+[![Mapbox](https://img.shields.io/badge/Mapbox_GL-Maps-000000?style=for-the-badge&logo=mapbox&logoColor=white)](https://mapbox.com)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
+
+> A full-stack urban safety assistant for Chandigarh — built with **Next.js + FastAPI + Supabase + Mapbox**.
+
+</div>
 
 ---
 
-## Repository Structure
+## ✨ Features
 
-```text
+### 🗺️ Sector Safety Scoring
+- Real-time safety score (0–100) for any location in Chandigarh
+- Sector baselines with road type multipliers and night-time penalties
+- Verdict bands: `SAFE`, `MODERATE`, `CAUTION`
+
+### 🏗️ Live Infrastructure Signals (AI Backend)
+- Nearby police stations, hospitals, and shops via OpenStreetMap/Overpass API
+- POI density scoring — more amenities = higher safety contribution
+- News sentiment scoring via NewsAPI + optional OpenAI headline analysis
+
+### 📋 Community Reports (Crowd-sourced)
+- Submit safe/unsafe/moderate signals with description
+- All reports stored in **Supabase** and factored into live scoring
+- Community adjustment range: `-15` to `+15` on final score
+
+### 📊 Dashboard & Analytics
+- Bar chart — Safety scores across all sectors
+- Top 5 safest sectors leaderboard with score rings
+- Heatmap overlay of entire Chandigarh safety grid
+
+### 🚨 Emergency Alerts
+- One-click SMS alert to emergency contacts via **Twilio**
+- Simulation mode when Twilio credentials are absent
+- Sector-aware alert message with live coordinates
+
+### 🎨 Premium UI
+- Click any sector card → Full profile modal with score breakdown
+- Smooth hover animations (lift + shadow + scale)
+- Dark / Light mode toggle
+- Toast notifications (success / error)
+- Animated score rings and proficiency bars
+
+---
+
+## 🚀 Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Frontend** | Next.js 14 + React 18 + TypeScript |
+| **Maps** | Mapbox GL JS |
+| **Backend** | Node.js + Express (API Gateway) |
+| **AI Service** | FastAPI + Python |
+| **Database** | Supabase (PostgreSQL) |
+| **Data Sources** | Overpass API (OSM) · NewsAPI |
+| **Alerts** | Twilio SMS |
+| **Build** | npm · pip · uvicorn |
+
+---
+
+## 📁 Project Structure
+
+```
 SafeRoute/
-├── backend/              # Node.js + Express API gateway
-├── frontend/             # Next.js + Mapbox web app
-├── ai/                   # FastAPI + scoring engine
-├── database/             # Supabase SQL schema and seed data
-├── package.json          # Root scripts/deps for backend service
-└── README.md
+│
+├── package.json                       ← Root scripts for backend service
+├── README.md
+│
+├── backend/                           ← Node.js + Express API gateway
+│   └── src/
+│       ├── index.js                   ← Server entry + routes
+│       ├── routes/
+│       │   ├── safety.js              ← /api/safety-score endpoint
+│       │   ├── reports.js             ← /api/report · /api/reports
+│       │   ├── alert.js               ← /api/alert (Twilio / simulation)
+│       │   └── heatmap.js             ← /api/heatmap
+│       └── services/
+│           └── supabaseClient.js      ← Supabase JS client setup
+│
+├── ai/                                ← FastAPI scoring engine
+│   ├── fastapi_app.py                 ← App entry + /score · /heatmap
+│   ├── scorer.py                      ← Core scoring logic (4-component)
+│   ├── sector_data.py                 ← Chandigarh sector baselines
+│   ├── overpass.py                    ← POI fetcher from OSM
+│   ├── news_sentiment.py              ← NewsAPI + OpenAI scoring
+│   └── requirements.txt
+│
+├── frontend/                          ← Next.js web app
+│   ├── .env.local
+│   └── src/
+│       ├── app/
+│       │   └── page.tsx               ← Main map + search UI
+│       ├── components/
+│       │   ├── ScoreCard.tsx          ← Safety score ring card
+│       │   ├── SectorModal.tsx        ← Full sector profile modal
+│       │   ├── ReportForm.tsx         ← Community report submission
+│       │   ├── RankTable.tsx          ← Safety leaderboard
+│       │   └── AlertButton.tsx        ← Emergency alert trigger
+│       └── services/
+│           └── api.ts                 ← All API calls
+│
+└── database/
+    └── schema.sql                     ← Supabase reports table + seed data
 ```
 
 ---
 
-## Tech Stack
+## ⚡ Quick Start
 
-- **Frontend:** Next.js 14, React 18, TypeScript, Mapbox GL
-- **Backend:** Node.js, Express, Supabase JS client
-- **AI Service:** FastAPI, Python, requests, python-dotenv
-- **Data Sources:** Overpass API (OSM), NewsAPI, Supabase
-- **Alerts:** Twilio (optional; simulation mode available)
+### Step 1 — Supabase Setup
 
----
+1. Go to [https://supabase.com](https://supabase.com) → Create free project
+2. Open **SQL Editor** → Run `database/schema.sql`
+3. Confirm `reports` table is created and seeded
+4. Copy **Project URL** and **Anon Key**
 
-## Prerequisites
+### Step 2 — Configure Environment Variables
 
-Install the following before setup:
-
-- **Node.js** 18+
-- **npm** 9+
-- **Python** 3.10+
-- **pip**
-- A **Supabase project** (for reports)
-- A **Mapbox token** (for map rendering and routes)
-
-Optional but recommended:
-
-- **NewsAPI key** (for live news sentiment)
-- **OpenAI API key** (for LLM-based headline scoring)
-- **Twilio credentials** (for real SMS alerts)
-
----
-
-## Environment Variables
-
-Create these `.env` files before running services.
-
-### 1) Root `.env` (Backend)
-
-Create `/workspace/SafeRoute/.env`:
-
-```bash
+**Root `.env`** (Backend):
+```properties
 PORT=4000
 AI_SERVICE_URL=http://localhost:8000
 SUPABASE_URL=your_supabase_project_url
 SUPABASE_ANON_KEY=your_supabase_anon_key
-
-# Optional (if you want real SMS)
 TWILIO_ACCOUNT_SID=
 TWILIO_AUTH_TOKEN=
 TWILIO_FROM_NUMBER=
 ```
 
-### 2) Frontend `.env.local`
-
-Create `/workspace/SafeRoute/frontend/.env.local`:
-
-```bash
+**`frontend/.env.local`**:
+```properties
 NEXT_PUBLIC_BACKEND_URL=http://localhost:4000/api
 NEXT_PUBLIC_MAPBOX_TOKEN=your_mapbox_public_token
 ```
 
-### 3) AI `.env`
-
-Create `/workspace/SafeRoute/ai/.env`:
-
-```bash
+**`ai/.env`**:
+```properties
 NEWS_API_KEY=your_newsapi_key
 OPENAI_API_KEY=your_openai_api_key
 ```
 
-> If `NEWS_API_KEY` or `OPENAI_API_KEY` is missing, the AI service falls back to neutral/keyword-based behavior.
+> If `NEWS_API_KEY` or `OPENAI_API_KEY` is missing, the AI service falls back to neutral keyword-based scoring automatically.
 
----
-
-## Setup Instructions
-
-### Step 1: Clone and install dependencies
-
-From repository root:
+### Step 3 — Install Dependencies
 
 ```bash
-# Backend deps (root package.json)
+# Backend
 npm install
 
-# Frontend deps
+# Frontend
 npm --prefix frontend install
 
-# Python deps
-python -m pip install -r ai/requirements.txt
+# AI Service
+pip install -r ai/requirements.txt
 ```
 
-### Step 2: Initialize Supabase table
+### Step 4 — Run All Services
 
-1. Open Supabase SQL Editor.
-2. Run the SQL in `database/schema.sql`.
-3. Confirm `reports` table is created and seeded.
-
-### Step 3: Start all three services
-
-Open 3 terminals from repo root.
-
-#### Terminal A — AI service
+Open **3 terminals** from repo root:
 
 ```bash
-uvicorn ai.fastapi_app:app --reload --host 0.0.0.0 --port 8000 --app-dir /workspace/SafeRoute
-```
+# Terminal A — AI Service
+uvicorn ai.fastapi_app:app --reload --host 0.0.0.0 --port 8000
 
-#### Terminal B — Node backend
-
-```bash
+# Terminal B — Node Backend
 npm run dev
-```
 
-#### Terminal C — Frontend
-
-```bash
+# Terminal C — Frontend
 npm --prefix frontend run dev
 ```
 
-### Step 4: Open the app
-
-- Frontend: `http://localhost:3000`
-- Backend health: `http://localhost:4000/health`
-- AI health: `http://localhost:8000/health`
-
----
-
-## How Scoring Works (0–100)
-
-`final_score = sector_contribution (0–50) + poi_score (0–25) + news_score (0–25) + community_adjustment (-15..+15)`
-
-- **Sector contribution:** baseline Chandigarh safety with type multipliers + night penalty
-- **POI score:** nearby amenities from Overpass API
-- **News score:** recent sector-oriented headlines
-- **Community adjustment:** crowd reports from Supabase
-
-The backend returns verdict bands:
-
-- **Safe**: `>= 75`
-- **Moderate**: `50–74`
-- **Caution**: `< 50`
-
----
-
-## Key API Endpoints
-
-### Backend (`http://localhost:4000`)
-
-- `GET /health` — backend health
-- `POST /api/safety-score` — get merged safety score for `{ lat, lon }`
-- `POST /api/report` — submit community report
-- `GET /api/reports` — fetch recent community reports
-- `POST /api/alert` — trigger/simulate emergency SMS alerts
-- `GET /api/heatmap` — fetch sector heatmap payload from AI service
-
-### AI Service (`http://localhost:8000`)
-
-- `GET /health` — AI health
-- `POST /score` — compute AI safety score for `{ lat, lon }`
-- `GET /heatmap` — all sector scores for heatmap
-
----
-
-## Example Requests
-
-### Get score from backend
-
-```bash
-curl -X POST http://localhost:4000/api/safety-score \
-  -H "Content-Type: application/json" \
-  -d '{"lat":30.7412,"lon":76.7843}'
 ```
-
-### Submit a report
-
-```bash
-curl -X POST http://localhost:4000/api/report \
-  -H "Content-Type: application/json" \
-  -d '{"lat":30.7412,"lon":76.7843,"safety_type":"safe","description":"Well lit and active"}'
+✅ Frontend  →  http://localhost:3000
+✅ Backend   →  http://localhost:4000
+✅ AI API    →  http://localhost:8000
 ```
 
 ---
 
-## Troubleshooting
+## 🔌 API Reference
 
-- **Frontend map is blank**
-  - Check `NEXT_PUBLIC_MAPBOX_TOKEN` is set and valid.
-- **Safety score endpoint fails**
-  - Confirm AI service is running on `http://localhost:8000`.
-  - Confirm `AI_SERVICE_URL` in root `.env`.
-- **Reports not saving**
-  - Verify `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
-  - Ensure `database/schema.sql` was run in Supabase.
-- **Alert endpoint returns simulation mode**
-  - This is expected when Twilio env vars are missing.
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`  | `/health` | Backend health check |
+| `POST` | `/api/safety-score` | Get merged safety score for `{ lat, lon }` |
+| `POST` | `/api/report` | Submit a community report |
+| `GET`  | `/api/reports` | Fetch recent community reports |
+| `POST` | `/api/alert` | Trigger / simulate emergency SMS alert |
+| `GET`  | `/api/heatmap` | Sector heatmap payload from AI service |
+| `GET`  | `/score` *(AI)* | Compute AI safety score for `{ lat, lon }` |
+| `GET`  | `/heatmap` *(AI)* | All sector scores for heatmap overlay |
 
 ---
 
-## Notes
+## 📐 Safety Score Formula
 
-- Current sector dataset and defaults are Chandigarh-specific.
-- The application includes graceful fallbacks if external APIs are unavailable.
-- For production usage, tighten CORS, add auth, and harden rate limits.
+```
+final_score = sector_baseline (0–50)
+            + poi_score        (0–25)
+            + news_score       (0–25)
+            + community_adj    (-15..+15)
+```
+
+| Component | Source | Weight |
+|-----------|--------|--------|
+| **Sector Baseline** | Static Chandigarh data + night penalty | 50 pts |
+| **POI Score** | Nearby police / hospital / shops (Overpass) | 25 pts |
+| **News Score** | Recent headlines (NewsAPI + OpenAI) | 25 pts |
+| **Community Adj.** | Crowd reports from Supabase | ±15 pts |
+
+**Verdict Bands:**
+
+| Score | Verdict |
+|-------|---------|
+| `≥ 75` | 🟢 **Safe** |
+| `50–74` | 🟡 **Moderate** |
+| `< 50` | 🔴 **Caution** |
+
+---
+
+## 🍃 Supabase Document Structure
+
+```json
+{
+  "id": "uuid-abc123",
+  "lat": 30.7412,
+  "lon": 76.7843,
+  "safety_type": "safe",
+  "description": "Well lit and active market area",
+  "sector": "Sector 17",
+  "created_at": "2024-11-01T18:32:00Z"
+}
+```
+
+> **Community Adjustment** = positive reports push score up · negative reports pull it down · capped at ±15
+
+---
+
+---
+
+<div align="center">
+Built with <strong>Next.js</strong> + <strong>FastAPI</strong> + <strong>Supabase</strong> + <strong>Mapbox GL</strong>
+</div>
