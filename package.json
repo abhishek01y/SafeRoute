@@ -1,0 +1,17 @@
+{
+  "name": "saferoute-backend",
+  "version": "1.0.0",
+  "description": "SafeRoute AI — Node.js backend, Chandigarh edition",
+  "main": "backend/server.js",
+  "scripts": {
+    "dev": "node backend/server.js",
+    "start": "node backend/server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "axios": "^1.6.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2"
+  }
+}

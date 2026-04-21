@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+frontend/.env.local
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+__pycache__/
+*.pyc
