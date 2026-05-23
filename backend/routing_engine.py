@@ -207,7 +207,7 @@ class SafeRouter:
             return None
 
     def get_all_edges_geojson(self, major_only=False):
-        major_types = {'motorway', 'motorway_link', 'trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary', 'tertiary_link'}
+        major_types = {'motorway', 'motorway_link', 'trunk', 'trunk_link', 'primary', 'primary_link'}
         features = []
         for u, v, data in self.G.edges(data=True):
             if major_only:
