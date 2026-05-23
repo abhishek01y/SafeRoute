@@ -1,3 +1,7 @@
+function calcTime(distKm) {
+  return Math.round((distKm / 35) * 60)
+}
+
 export default function RouteInfo({ routes, activeMode, setActiveMode }) {
   if (!routes) return null
 
@@ -13,6 +17,7 @@ export default function RouteInfo({ routes, activeMode, setActiveMode }) {
         {modes.map(mode => {
           const data = routes[mode.key]
           if (!data || data.error) return null
+          const time = data.estimated_time_min || calcTime(data.total_distance_km)
 
           return (
             <button
@@ -31,7 +36,7 @@ export default function RouteInfo({ routes, activeMode, setActiveMode }) {
               </div>
               <div className="text-center px-2">
                 <div className="text-xs text-slate-400">Time</div>
-                <div className="text-xs text-white font-medium">{data.estimated_time_min || '?'} min</div>
+                <div className="text-xs text-white font-medium">{time} min</div>
               </div>
               <div className="text-right">
                 <div className="text-xs text-slate-400">Safety</div>

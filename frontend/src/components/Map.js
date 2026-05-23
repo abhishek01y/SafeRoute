@@ -47,11 +47,12 @@ function RouteLayer({ routes, activeMode }) {
       }).addTo(map)
 
       if (route.total_distance_km && route.avg_safety_score) {
+        const time = route.estimated_time_min || Math.round((route.total_distance_km / 35) * 60)
         polyline.bindPopup(
           `<div style="font-size:13px; min-width:180px">
-            <b>${mode.toUpperCase()} Route</b><br/>
+            <b>Route ${modes.indexOf(mode) + 1}</b><br/>
             Distance: ${route.total_distance_km} km<br/>
-            Time: ~${route.estimated_time_min} min<br/>
+            Time: ~${time} min<br/>
             Safety: ${route.avg_safety_score}/100
           </div>`
         )
