@@ -172,44 +172,51 @@ class SafeRouter:
 
         return nearest
 
-    def get_all_edges_geojson(self):
+    def _build_edge_feature(self, u, v, data):
+        if 'geometry' not in data:
+            return None
+        try:
+            coords_pairs = []
+            wkt = data['geometry']
+            wkt_clean = wkt.replace('LINESTRING (', '').replace(')', '').replace('(', '')
+            parts = wkt_clean.split(',')
+            for part in parts:
+                part = part.strip()
+                if ' ' in part:
+                    lon_str, lat_str = part.split(' ', 1)
+                    try:
+                        lon, lat = float(lon_str), float(lat_str)
+                        coords_pairs.append([lon, lat])
+                    except ValueError:
+                        pass
+            if len(coords_pairs) < 2:
+                return None
+            return {
+                'type': 'Feature',
+                'geometry': {'type': 'LineString', 'coordinates': coords_pairs},
+                'properties': {
+                    'edge_id': data.get('edge_id', 0),
+                    'name': data.get('name', 'Unknown'),
+                    'safety_score': data.get('safety_score', 70),
+                    'type': data.get('type', 'unknown'),
+                    'length_km': data.get('length_km', 0),
+                    'lanes': data.get('lanes', 1),
+                }
+            }
+        except Exception:
+            return None
+
+    def get_all_edges_geojson(self, major_only=False):
+        major_types = {'motorway', 'motorway_link', 'trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary', 'tertiary_link'}
         features = []
         for u, v, data in self.G.edges(data=True):
-            if 'geometry' in data:
-                try:
-                    coords_pairs = []
-                    wkt = data['geometry']
-                    wkt_clean = wkt.replace('LINESTRING (', '').replace(')', '').replace('(', '')
-                    parts = wkt_clean.split(',')
-                    for part in parts:
-                        part = part.strip()
-                        if ' ' in part:
-                            lon_str, lat_str = part.split(' ', 1)
-                            try:
-                                lon, lat = float(lon_str), float(lat_str)
-                                coords_pairs.append([lon, lat])
-                            except ValueError:
-                                pass
-
-                    if len(coords_pairs) >= 2:
-                        features.append({
-                            'type': 'Feature',
-                            'geometry': {
-                                'type': 'LineString',
-                                'coordinates': coords_pairs
-                            },
-                            'properties': {
-                                'edge_id': data.get('edge_id', 0),
-                                'name': data.get('name', 'Unknown'),
-                                'safety_score': data.get('safety_score', 70),
-                                'type': data.get('type', 'unknown'),
-                                'length_km': data.get('length_km', 0),
-                                'lanes': data.get('lanes', 1),
-                            }
-                        })
-                except Exception:
-                    pass
-
+            if major_only:
+                rt = str(data.get('type', '')).lower()
+                if rt not in major_types:
+                    continue
+            feat = self._build_edge_feature(u, v, data)
+            if feat:
+                features.append(feat)
         return {
             'type': 'FeatureCollection',
             'features': features

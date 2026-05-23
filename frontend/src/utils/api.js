@@ -4,14 +4,14 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 30000,
+  timeout: 120000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
 export async function getEdges() {
-  const res = await api.get('/edges');
+  const res = await api.get('/edges?major=true');
   return res.data;
 }
 

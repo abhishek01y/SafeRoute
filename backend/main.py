@@ -117,10 +117,10 @@ async def root():
 
 
 @app.get("/edges")
-async def get_edges():
+async def get_edges(major: bool = False):
     if router is None:
         raise HTTPException(status_code=503, detail="Graph not loaded yet")
-    return router.get_all_edges_geojson()
+    return router.get_all_edges_geojson(major_only=major)
 
 
 @app.post("/route")
