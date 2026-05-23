@@ -3,15 +3,11 @@ import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 
 function getSafetyColor(score) {
-  if (score > 75) return '#22c55e'
-  if (score >= 45) return '#eab308'
-  return '#ef4444'
+  return '#22c55e'
 }
 
 function getSafetyWeight(score) {
-  if (score > 75) return 3
-  if (score >= 45) return 2.5
-  return 3.5
+  return 2.5
 }
 
 function getRouteColor(mode) {
@@ -62,9 +58,8 @@ function EdgeLayer({ edges, onEdgeClick }) {
     if (!edges || !edges.features) return
     if (layerRef.current) map.removeLayer(layerRef.current)
 
-    // Only show safe roads on map
     layerRef.current = L.geoJSON(edges, {
-      filter: feature => feature.properties.safety_score > 75,
+      filter: feature => feature.properties.safety_score >= 70,
       style: feature => ({
         color: getSafetyColor(feature.properties.safety_score),
         weight: getSafetyWeight(feature.properties.safety_score),
