@@ -6,18 +6,21 @@ export default function RouteInfo({ routes, activeMode, setActiveMode }) {
   if (!routes) return null
 
   const modes = [
-    { key: 'shortest', label: 'Route 1', color: 'bg-blue-500' },
-    { key: 'balanced', label: 'Route 2', color: 'bg-purple-500' },
-    { key: 'safest', label: 'Route 3', color: 'bg-green-500' },
+    { key: 'shortest', color: 'bg-blue-500' },
+    { key: 'balanced', color: 'bg-purple-500' },
+    { key: 'safest', color: 'bg-green-500' },
   ]
+
+  const available = modes.filter(m => routes[m.key] && !routes[m.key].error)
+  const multiple = available.length > 1
 
   return (
     <div className="bg-slate-900 border-t border-slate-700 p-3">
       <div className="flex items-center gap-3 justify-center">
-        {modes.map(mode => {
+        {available.map((mode, i) => {
           const data = routes[mode.key]
-          if (!data || data.error) return null
           const time = data.estimated_time_min || calcTime(data.total_distance_km)
+          const label = multiple ? `Route ${i + 1}` : 'Route'
 
           return (
             <button
@@ -31,7 +34,7 @@ export default function RouteInfo({ routes, activeMode, setActiveMode }) {
             >
               <span className={`w-3 h-3 rounded-full ${mode.color}`}></span>
               <div className="text-left">
-                <div className="text-white font-medium">{mode.label}</div>
+                <div className="text-white font-medium">{label}</div>
                 <div className="text-xs text-slate-400">{data.total_distance_km} km</div>
               </div>
               <div className="text-center px-2">

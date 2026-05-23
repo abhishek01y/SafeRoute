@@ -30,9 +30,11 @@ function RouteLayer({ routes, activeMode }) {
     if (!routes) return
 
     const modes = ['shortest', 'balanced', 'safest']
+    const available = modes.filter(m => routes[m] && routes[m].path && routes[m].path.length >= 2)
+    const multiple = available.length > 1
     const boundsList = []
 
-    modes.forEach(mode => {
+    available.forEach((mode, i) => {
       const route = routes[mode]
       if (!route || !route.path || route.path.length < 2) return
 
@@ -48,9 +50,10 @@ function RouteLayer({ routes, activeMode }) {
 
       if (route.total_distance_km && route.avg_safety_score) {
         const time = route.estimated_time_min || Math.round((route.total_distance_km / 35) * 60)
+        const label = multiple ? `Route ${i + 1}` : 'Route'
         polyline.bindPopup(
           `<div style="font-size:13px; min-width:180px">
-            <b>Route ${modes.indexOf(mode) + 1}</b><br/>
+            <b>${label}</b><br/>
             Distance: ${route.total_distance_km} km<br/>
             Time: ~${time} min<br/>
             Safety: ${route.avg_safety_score}/100
@@ -107,11 +110,6 @@ export default function MapView({
         </button>
       </div>
 
-      <div className="absolute bottom-4 left-4 z-[1000] bg-slate-900/90 backdrop-blur rounded-lg border border-slate-700 px-4 py-2 text-sm flex items-center gap-4">
-        <span className="flex items-center gap-1.5 text-xs"><span className="w-3 h-0.5 bg-blue-400 rounded"></span> Route 1</span>
-        <span className="flex items-center gap-1.5 text-xs"><span className="w-3 h-0.5 bg-purple-400 rounded"></span> Route 2</span>
-        <span className="flex items-center gap-1.5 text-xs"><span className="w-3 h-0.5 bg-green-400 rounded"></span> Route 3</span>
-      </div>
     </div>
   )
 }
