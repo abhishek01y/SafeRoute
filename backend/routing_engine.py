@@ -214,6 +214,8 @@ class SafeRouter:
                 rt = str(data.get('type', '')).lower()
                 if rt not in major_types:
                     continue
+            if data.get('safety_score', 0) < 70:
+                continue
             feat = self._build_edge_feature(u, v, data)
             if feat:
                 features.append(feat)

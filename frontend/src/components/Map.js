@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 
 function getSafetyColor(score) {
+  if (score > 75) return '#22c55e'
   return '#22c55e'
 }
 
