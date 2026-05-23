@@ -3,12 +3,11 @@ import dynamic from 'next/dynamic'
 import Sidebar from '../components/Sidebar'
 import XAIPanel from '../components/XAIPanel'
 import RouteInfo from '../components/RouteInfo'
-import { getEdges, compareRoutes, getXAI, getSystemReport } from '../utils/api'
+import { compareRoutes, getXAI, getSystemReport } from '../utils/api'
 
 const MapView = dynamic(() => import('../components/Map'), { ssr: false })
 
 export default function Home() {
-  const [edges, setEdges] = useState(null)
   const [startCoords, setStartCoords] = useState(null)
   const [endCoords, setEndCoords] = useState(null)
   const [routeMode, setRouteMode] = useState('balanced')
@@ -23,19 +22,8 @@ export default function Home() {
   const [clickPhase, setClickPhase] = useState('start')
 
   useEffect(() => {
-    loadEdges()
     loadSystemReport()
   }, [])
-
-  async function loadEdges() {
-    try {
-      const data = await getEdges()
-      setEdges(data)
-    } catch (err) {
-      console.warn('Could not load edges:', err.message)
-      setEdges({ type: 'FeatureCollection', features: [] })
-    }
-  }
 
   async function loadSystemReport() {
     try {
@@ -56,10 +44,6 @@ export default function Home() {
       setClickPhase('start')
     }
   }, [clickPhase])
-
-  const handleEdgeClick = useCallback((feature) => {
-    console.log('Edge clicked:', feature.properties)
-  }, [])
 
   async function handleFindRoute() {
     if (!startCoords || !endCoords) return
@@ -104,13 +88,11 @@ export default function Home() {
 
         <div className="flex-1 flex flex-col">
           <MapView
-            edges={edges}
             routes={routes}
             activeMode={activeMode}
             mapDark={mapDark}
             onToggleDark={() => setMapDark(!mapDark)}
             onMapClick={handleMapClick}
-            onEdgeClick={handleEdgeClick}
           />
 
           {routes && (

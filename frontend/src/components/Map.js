@@ -1,15 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
-
-function getSafetyColor(score) {
-  if (score > 75) return '#22c55e'
-  return '#22c55e'
-}
-
-function getSafetyWeight(score) {
-  return 2.5
-}
 
 function getRouteColor(mode) {
   switch (mode) {
@@ -26,63 +17,6 @@ function MapClickHandler({ onMapClick }) {
       if (onMapClick) onMapClick(e.latlng)
     },
   })
-  return null
-}
-
-function MapBoundsUpdater({ edges, mode }) {
-  const map = useMap()
-  const boundsSet = useRef(false)
-
-  useEffect(() => {
-    if (edges && edges.features && edges.features.length > 0 && !boundsSet.current) {
-      try {
-        const geoLayer = L.geoJSON(edges)
-        const bounds = geoLayer.getBounds()
-        if (bounds.isValid()) {
-          map.fitBounds(bounds, { padding: [30, 30] })
-          boundsSet.current = true
-        }
-      } catch (e) {
-        console.warn('Could not fit bounds:', e)
-      }
-    }
-  }, [edges, map])
-
-  return null
-}
-
-function EdgeLayer({ edges, onEdgeClick }) {
-  const map = useMap()
-  const layerRef = useRef(null)
-
-  useEffect(() => {
-    if (!edges || !edges.features) return
-    if (layerRef.current) map.removeLayer(layerRef.current)
-
-    layerRef.current = L.geoJSON(edges, {
-      filter: feature => feature.properties.safety_score >= 70,
-      style: feature => ({
-        color: getSafetyColor(feature.properties.safety_score),
-        weight: getSafetyWeight(feature.properties.safety_score),
-        opacity: 0.8,
-      }),
-      onEachFeature: (feature, layer) => {
-        layer.on({ click: () => { if (onEdgeClick) onEdgeClick(feature) } })
-        layer.bindTooltip(
-          `<div style="font-size:12px">
-            <b>${feature.properties.name}</b><br/>
-            Safety: ${feature.properties.safety_score}/100<br/>
-            Type: ${feature.properties.type}<br/>
-            Length: ${feature.properties.length_km?.toFixed(2) || '?'} km
-          </div>`,
-          { sticky: true }
-        )
-      },
-    }).addTo(map)
-
-    return () => { if (layerRef.current) map.removeLayer(layerRef.current) }
-  }, [edges, map, onEdgeClick])
-
   return null
 }
 
@@ -128,8 +62,8 @@ function RouteLayer({ routes, activeMode }) {
 }
 
 export default function MapView({
-  edges, routes, activeMode,
-  onMapClick, onEdgeClick, mapDark, onToggleDark,
+  routes, activeMode,
+  onMapClick, mapDark, onToggleDark,
 }) {
   const defaultCenter = [28.6139, 77.2090]
   const defaultZoom = 12
@@ -150,8 +84,6 @@ export default function MapView({
           url={mapDark ? darkTile : lightTile}
         />
         <MapClickHandler onMapClick={onMapClick} />
-        <MapBoundsUpdater edges={edges} mode={activeMode} />
-        <EdgeLayer edges={edges} onEdgeClick={onEdgeClick} />
         <RouteLayer routes={routes} activeMode={activeMode} />
       </MapContainer>
 
