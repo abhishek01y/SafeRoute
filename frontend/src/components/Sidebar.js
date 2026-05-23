@@ -123,12 +123,6 @@ const SAMPLE_LOCATIONS = [
   { name: "Delhi University (South)", lat: 28.5600, lon: 77.1950 },
 ]
 
-const ROUTE_MODES = [
-  { value: 'shortest', label: 'Shortest', icon: '⚡', desc: 'Fastest path, minimum distance' },
-  { value: 'balanced', label: 'Balanced', icon: '⚖️', desc: 'Optimizes safety & distance' },
-  { value: 'safest', label: 'Safest', icon: '🛡️', desc: 'Avoids all high-risk zones' },
-]
-
 const TRANSPORT_MODES = [
   { value: 'car', label: 'Car / 4-Wheeler', icon: '🚗', desc: 'All cars, SUVs, autos' },
   { value: 'motorcycle', label: 'Motorcycle / 2-Wheeler', icon: '🏍️', desc: 'Bikes, scooters, cycles' },
@@ -138,12 +132,10 @@ const TRANSPORT_MODES = [
 export default function Sidebar({
   startCoords, setStartCoords,
   endCoords, setEndCoords,
-  routeMode, setRouteMode,
   transportMode, setTransportMode,
   onFindRoute,
   loading,
   routeResult,
-  systemReport,
 }) {
   const [startInput, setStartInput] = useState('')
   const [endInput, setEndInput] = useState('')
@@ -259,29 +251,6 @@ export default function Sidebar({
         )}
 
         <div>
-          <label className="text-sm text-slate-400 block mb-2">Route Preference</label>
-          <div className="space-y-2">
-            {ROUTE_MODES.map(mode => (
-              <button
-                key={mode.value}
-                onClick={() => setRouteMode(mode.value)}
-                className={`w-full text-left px-3 py-2.5 rounded border text-sm transition-all ${
-                  routeMode === mode.value
-                    ? 'border-blue-500 bg-blue-500/10 text-blue-300'
-                    : 'border-slate-600 bg-slate-800 text-slate-400 hover:border-slate-500'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span>{mode.icon}</span>
-                  <span className="font-medium">{mode.label}</span>
-                </div>
-                <div className="text-xs mt-0.5 ml-7 opacity-70">{mode.desc}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
           <label className="text-sm text-slate-400 block mb-2">Transport Mode</label>
           <div className="grid grid-cols-3 gap-1.5">
             {TRANSPORT_MODES.map(tm => (
@@ -320,83 +289,12 @@ export default function Sidebar({
           )}
         </button>
 
-        {routeResult && (
-          <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-white">Route Summary</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Distance</span>
-                <span className="text-white font-medium">{routeResult.total_distance_km} km</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Safety Score</span>
-                <span className={`font-medium ${getSafetyColor(routeResult.avg_safety_score)}`}>
-                  {routeResult.avg_safety_score}/100
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Risk Exposure</span>
-                <span className="text-orange-400 font-medium">{routeResult.risk_exposure}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Segments</span>
-                <span className="text-white">{routeResult.path_edges?.length || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Mode</span>
-                <span className="text-blue-400 capitalize">{routeResult.routing_mode}</span>
-              </div>
-            </div>
-            <div className="w-full bg-slate-700 rounded-full h-2 mt-2">
-              <div
-                className={`h-2 rounded-full transition-all ${getSafetyBar(routeResult.avg_safety_score)}`}
-                style={{ width: `${routeResult.avg_safety_score}%` }}
-              />
-            </div>
-          </div>
-        )}
+        
 
-        {systemReport && (
-          <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 text-sm">
-            <h3 className="text-sm font-semibold text-white mb-3">System Dashboard</h3>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="bg-slate-900 rounded p-2 text-center">
-                <div className="text-green-400 text-lg font-bold">{systemReport.green_roads_safe}</div>
-                <div className="text-xs text-slate-400">Safe Roads</div>
-              </div>
-              <div className="bg-slate-900 rounded p-2 text-center">
-                <div className="text-yellow-400 text-lg font-bold">{systemReport.yellow_roads_moderate}</div>
-                <div className="text-xs text-slate-400">Moderate</div>
-              </div>
-              <div className="bg-slate-900 rounded p-2 text-center">
-                <div className="text-red-400 text-lg font-bold">{systemReport.red_roads_dangerous}</div>
-                <div className="text-xs text-slate-400">Dangerous</div>
-              </div>
-              <div className="bg-slate-900 rounded p-2 text-center">
-                <div className="text-blue-400 text-lg font-bold">{systemReport.avg_safety_score}</div>
-                <div className="text-xs text-slate-400">Avg Safety</div>
-              </div>
-            </div>
-            <div className="mt-3 text-xs text-slate-500">
-              Network: {systemReport.total_nodes} nodes, {systemReport.total_edges} edges
-            </div>
-          </div>
-        )}
+        
       </div>
 
-      <div className="p-3 border-t border-slate-700 text-center">
-        <div className="flex items-center justify-center gap-3 text-xs text-slate-500">
-          <div className="legend-item">
-            <span className="legend-color bg-green-500"></span> Safe (75+)
-          </div>
-          <div className="legend-item">
-            <span className="legend-color bg-yellow-500"></span> Moderate
-          </div>
-          <div className="legend-item">
-            <span className="legend-color bg-red-500"></span> Risky (&lt;45)
-          </div>
-        </div>
-      </div>
+      <div className="p-3 border-t border-slate-700"></div>
     </div>
   )
 }

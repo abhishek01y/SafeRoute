@@ -22,40 +22,50 @@ function MapClickHandler({ onMapClick }) {
 
 function RouteLayer({ routes, activeMode }) {
   const map = useMap()
-  const layerRef = useRef(null)
+  const layersRef = useRef({})
 
   useEffect(() => {
-    if (layerRef.current) map.removeLayer(layerRef.current)
-    if (!routes || !routes[activeMode]) return
+    Object.values(layersRef.current).forEach(l => map.removeLayer(l))
+    layersRef.current = {}
+    if (!routes) return
 
-    const route = routes[activeMode]
-    if (!route.path || route.path.length < 2) return
+    const modes = ['shortest', 'balanced', 'safest']
+    const boundsList = []
 
-    const latlngs = route.path.map(p => [p.lat, p.lon])
-    const polyline = L.polyline(latlngs, {
-      color: getRouteColor(activeMode),
-      weight: 5, opacity: 0.9,
-      dashArray: activeMode === 'balanced' ? '10, 6' : null,
-    }).addTo(map)
+    modes.forEach(mode => {
+      const route = routes[mode]
+      if (!route || !route.path || route.path.length < 2) return
 
-    if (route.total_distance_km && route.avg_safety_score) {
-      polyline.bindPopup(
-        `<div style="font-size:13px; min-width:180px">
-          <b>${activeMode.toUpperCase()} Route</b><br/>
-          Distance: ${route.total_distance_km} km<br/>
-          Safety: ${route.avg_safety_score}/100<br/>
-          Edges: ${route.path_edges?.length || 0}
-        </div>`
-      )
+      const latlngs = route.path.map(p => [p.lat, p.lon])
+      const isActive = mode === activeMode
+
+      const polyline = L.polyline(latlngs, {
+        color: getRouteColor(mode),
+        weight: isActive ? 6 : 3,
+        opacity: isActive ? 0.9 : 0.4,
+        dashArray: mode === 'balanced' ? '10, 6' : null,
+      }).addTo(map)
+
+      if (route.total_distance_km && route.avg_safety_score) {
+        polyline.bindPopup(
+          `<div style="font-size:13px; min-width:180px">
+            <b>${mode.toUpperCase()} Route</b><br/>
+            Distance: ${route.total_distance_km} km<br/>
+            Time: ~${route.estimated_time_min} min<br/>
+            Safety: ${route.avg_safety_score}/100
+          </div>`
+        )
+      }
+
+      layersRef.current[mode] = polyline
+      boundsList.push(...latlngs)
+    })
+
+    if (boundsList.length > 0) {
+      map.fitBounds(L.latLngBounds(boundsList), { padding: [40, 40] })
     }
 
-    layerRef.current = polyline
-
-    const first = route.path[0], last = route.path[route.path.length - 1]
-    L.marker([first.lat, first.lon], { icon: L.divIcon({ className: 'custom-marker start', iconSize: [16, 16] }) }).addTo(map).bindTooltip('Start', { permanent: false })
-    L.marker([last.lat, last.lon], { icon: L.divIcon({ className: 'custom-marker end', iconSize: [16, 16] }) }).addTo(map).bindTooltip('End', { permanent: false })
-
-    return () => { if (layerRef.current) map.removeLayer(layerRef.current) }
+    return () => { Object.values(layersRef.current).forEach(l => map.removeLayer(l)) }
   }, [routes, activeMode, map])
 
   return null
@@ -96,20 +106,11 @@ export default function MapView({
         </button>
       </div>
 
-      {routes && routes[activeMode] && (
-        <div className="absolute bottom-4 left-4 z-[1000] bg-slate-900/90 backdrop-blur rounded-lg border border-slate-700 px-4 py-2 text-sm">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-0.5 rounded" style={{ background: getRouteColor(activeMode) }}></span>
-              <span className="capitalize text-slate-300">{activeMode}</span>
-            </div>
-            <span className="text-slate-400">{routes[activeMode].total_distance_km} km</span>
-            <span className="text-slate-400">Safety: {routes[activeMode].avg_safety_score}/100</span>
-          </div>
-        </div>
-      )}
-
-
+      <div className="absolute bottom-4 left-4 z-[1000] bg-slate-900/90 backdrop-blur rounded-lg border border-slate-700 px-4 py-2 text-sm flex items-center gap-4">
+        <span className="flex items-center gap-1.5 text-xs"><span className="w-3 h-0.5 bg-blue-400 rounded"></span> Shortest</span>
+        <span className="flex items-center gap-1.5 text-xs"><span className="w-3 h-0.5 bg-purple-400 rounded"></span> Balanced</span>
+        <span className="flex items-center gap-1.5 text-xs"><span className="w-3 h-0.5 bg-green-400 rounded"></span> Safest</span>
+      </div>
     </div>
   )
 }

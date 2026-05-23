@@ -168,13 +168,17 @@ async def compare_routes(req: RouteRequest):
 
     comparison = router.compare_routes(start_node, end_node, req.user_weight, req.transport)
 
+    speed_kmh = {"car": 35, "motorcycle": 30, "walk": 5}.get(req.transport, 30)
     result = {}
     for mode_name, mode_result in comparison.items():
         if 'error' not in mode_result:
+            dist = mode_result['total_distance_km']
+            time_min = round((dist / speed_kmh) * 60, 1)
             result[mode_name] = {
                 "path": [{"lat": n[0], "lon": n[1]} for n in mode_result['path']],
                 "path_edges": mode_result['path_edges'],
-                "total_distance_km": mode_result['total_distance_km'],
+                "total_distance_km": dist,
+                "estimated_time_min": time_min,
                 "avg_safety_score": mode_result['avg_safety_score'],
                 "risk_exposure": mode_result['risk_exposure']
             }
