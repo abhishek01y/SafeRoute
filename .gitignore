@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.egg-info/
+.env
+venv/
+.venv/
+env/
+
+# Node
+node_modules/
+.next/
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data (too large for git)
+backend/data/*.shp
+backend/data/*.dbf
+backend/data/*.shx
+backend/data/*.prj
+!backend/data/a-readme-first.txt
+
+# Duplicate root-level data directories (already in backend/data/)
+delhi_highway/
+delhi_administrative/
+delhi_location/
+delhi_poi/
+
+# HuggingFace cache
+~/.cache/huggingface/
