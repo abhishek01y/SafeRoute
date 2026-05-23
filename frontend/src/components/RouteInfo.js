@@ -2,9 +2,9 @@ export default function RouteInfo({ routes, activeMode, setActiveMode }) {
   if (!routes) return null
 
   const modes = [
-    { key: 'shortest', label: 'Shortest', color: 'bg-blue-500', lineColor: '#3b82f6' },
-    { key: 'balanced', label: 'Balanced', color: 'bg-purple-500', lineColor: '#a855f7' },
-    { key: 'safest', label: 'Safest', color: 'bg-green-500', lineColor: '#22c55e' },
+    { key: 'shortest', label: 'Route 1', color: 'bg-blue-500' },
+    { key: 'balanced', label: 'Route 2', color: 'bg-purple-500' },
+    { key: 'safest', label: 'Route 3', color: 'bg-green-500' },
   ]
 
   return (
@@ -31,7 +31,7 @@ export default function RouteInfo({ routes, activeMode, setActiveMode }) {
               </div>
               <div className="text-center px-2">
                 <div className="text-xs text-slate-400">Time</div>
-                <div className="text-xs text-white font-medium">{data.estimated_time_min} min</div>
+                <div className="text-xs text-white font-medium">{data.estimated_time_min || '?'} min</div>
               </div>
               <div className="text-right">
                 <div className="text-xs text-slate-400">Safety</div>
