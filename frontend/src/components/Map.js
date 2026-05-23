@@ -62,6 +62,7 @@ function EdgeLayer({ edges, onEdgeClick }) {
     if (!edges || !edges.features) return
     if (layerRef.current) map.removeLayer(layerRef.current)
 
+    // Only show safe roads on map
     layerRef.current = L.geoJSON(edges, {
       filter: feature => feature.properties.safety_score > 75,
       style: feature => ({
