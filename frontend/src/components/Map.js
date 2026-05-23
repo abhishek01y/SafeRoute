@@ -63,6 +63,7 @@ function EdgeLayer({ edges, onEdgeClick }) {
     if (layerRef.current) map.removeLayer(layerRef.current)
 
     layerRef.current = L.geoJSON(edges, {
+      filter: feature => feature.properties.safety_score > 75,
       style: feature => ({
         color: getSafetyColor(feature.properties.safety_score),
         weight: getSafetyWeight(feature.properties.safety_score),
