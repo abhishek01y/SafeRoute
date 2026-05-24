@@ -36,18 +36,22 @@ export default function Home() {
     setXaiLoading(true)
 
     try {
-      const [routeData, xaiResult] = await Promise.all([
-        compareRoutes(startCoords.lat, startCoords.lon, endCoords.lat, endCoords.lon, transportMode),
-        getXAI(startCoords.lat, startCoords.lon, endCoords.lat, endCoords.lon, activeMode, transportMode),
-      ])
+      const routeData = await compareRoutes(startCoords.lat, startCoords.lon, endCoords.lat, endCoords.lon, transportMode)
       setRoutes(routeData)
-      setXaiData(xaiResult)
     } catch (err) {
       console.error('Route error:', err)
       setRoutes(null)
-      setXaiData(null)
     } finally {
       setLoading(false)
+    }
+
+    try {
+      const xaiResult = await getXAI(startCoords.lat, startCoords.lon, endCoords.lat, endCoords.lon, activeMode, transportMode)
+      setXaiData(xaiResult)
+    } catch (err) {
+      console.error('XAI error:', err)
+      setXaiData(null)
+    } finally {
       setXaiLoading(false)
     }
   }
