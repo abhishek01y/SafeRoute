@@ -111,6 +111,16 @@ class SafetyScoreEngine:
 
         return max(0.0, min(100.0, risk))
 
+    def adjust_safety_for_time_of_day(self, safety_score, lighting_score, is_night=False):
+        if not is_night:
+            return safety_score
+        if lighting_score >= 60:
+            return min(100, safety_score + 15)
+        elif lighting_score >= 30:
+            return max(0, safety_score - 5)
+        else:
+            return max(0, safety_score - 15)
+
     def add_incident(self, lat, lon, severity=50, incident_type="general"):
         self.recent_incidents.append({
             'lat': lat,

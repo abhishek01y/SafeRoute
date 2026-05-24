@@ -3,10 +3,19 @@ import heapq
 import math
 
 
-def calculate_edge_cost(u, v, edge_data, lambda_factor=5.0, user_weight=None, transport="car"):
+def calculate_edge_cost(u, v, edge_data, lambda_factor=5.0, user_weight=None, transport="car", is_night=False):
     distance = edge_data.get('length_km', 1.0)
     safety_score = edge_data.get('safety_score', 100.0)
+    lighting_score = edge_data.get('lighting_score', 50.0)
     road_type = str(edge_data.get('type', 'residential')).lower() if edge_data.get('type') else 'residential'
+
+    if is_night:
+        if lighting_score >= 60:
+            safety_score = min(100, safety_score + 15)
+        elif lighting_score <= 30:
+            safety_score = max(0, safety_score - 15)
+        else:
+            safety_score = max(0, safety_score - 5)
 
     if user_weight is not None:
         safety_score = safety_score * (1 - user_weight) + 100 * user_weight
@@ -50,7 +59,7 @@ class SafeRouter:
         print(f"[INFO] Giant component: {len(giant)}/{self.G.number_of_nodes()} nodes ({len(giant)/max(1,self.G.number_of_nodes())*100:.1f}%)")
         return giant
 
-    def get_safest_route(self, start_node, end_node, routing_mode="balanced", user_weight=None, transport="car"):
+    def get_safest_route(self, start_node, end_node, routing_mode="balanced", user_weight=None, transport="car", is_night=False):
         if routing_mode == "shortest":
             factor = 0.0
         elif routing_mode == "safest":
@@ -70,7 +79,8 @@ class SafeRouter:
                     u, v, d,
                     lambda_factor=factor,
                     user_weight=user_weight,
-                    transport=transport
+                    transport=transport,
+                    is_night=is_night
                 )
             )
 
@@ -115,10 +125,10 @@ class SafeRouter:
                 'routing_mode': routing_mode
             }
 
-    def compare_routes(self, start_node, end_node, user_weight=None, transport="car"):
-        shortest = self.get_safest_route(start_node, end_node, "shortest", user_weight, transport)
-        balanced = self.get_safest_route(start_node, end_node, "balanced", user_weight, transport)
-        safest = self.get_safest_route(start_node, end_node, "safest", user_weight, transport)
+    def compare_routes(self, start_node, end_node, user_weight=None, transport="car", is_night=False):
+        shortest = self.get_safest_route(start_node, end_node, "shortest", user_weight, transport, is_night)
+        balanced = self.get_safest_route(start_node, end_node, "balanced", user_weight, transport, is_night)
+        safest = self.get_safest_route(start_node, end_node, "safest", user_weight, transport, is_night)
 
         return {
             'shortest': shortest,

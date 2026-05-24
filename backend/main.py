@@ -3,9 +3,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
 from contextlib import asynccontextmanager
+from datetime import datetime
 import uvicorn
 import os
 import asyncio
+
+
+def is_night_time():
+    h = datetime.now().hour
+    return h < 6 or h >= 19
 
 from data_loader import load_and_segment_delhi_data
 from routing_engine import SafeRouter
@@ -134,7 +140,7 @@ async def get_route(req: RouteRequest):
     if start_node is None or end_node is None:
         raise HTTPException(status_code=404, detail="Could not find nearest nodes")
 
-    result = router.get_safest_route(start_node, end_node, req.mode, req.user_weight, req.transport)
+    result = router.get_safest_route(start_node, end_node, req.mode, req.user_weight, req.transport, is_night=is_night_time())
 
     if 'error' in result:
         raise HTTPException(status_code=404, detail=result['error'])
@@ -166,7 +172,7 @@ async def compare_routes(req: RouteRequest):
     if start_node is None or end_node is None:
         raise HTTPException(status_code=404, detail="Could not find nearest nodes")
 
-    comparison = router.compare_routes(start_node, end_node, req.user_weight, req.transport)
+    comparison = router.compare_routes(start_node, end_node, req.user_weight, req.transport, is_night=is_night_time())
 
     speed_kmh = {"car": 35, "motorcycle": 30, "walk": 5}.get(req.transport, 30)
     result = {}
@@ -266,8 +272,9 @@ async def get_xai_explanation(req: RouteRequest):
     start_node = router.find_nearest_node(req.start_lat, req.start_lon)
     end_node = router.find_nearest_node(req.end_lat, req.end_lon)
 
-    shortest = router.get_safest_route(start_node, end_node, "shortest", transport=req.transport)
-    safest = router.get_safest_route(start_node, end_node, req.mode, transport=req.transport)
+    night = is_night_time()
+    shortest = router.get_safest_route(start_node, end_node, "shortest", transport=req.transport, is_night=night)
+    safest = router.get_safest_route(start_node, end_node, req.mode, transport=req.transport, is_night=night)
 
     if 'error' in shortest or 'error' in safest:
         raise HTTPException(status_code=404, detail="Could not compute routes")

@@ -4,6 +4,11 @@ import L from 'leaflet'
 
 const MODES = ['shortest', 'balanced', 'safest']
 
+function isNight() {
+  const h = new Date().getHours()
+  return h < 6 || h >= 19
+}
+
 function getRouteColor(i) {
   const colors = ['#3b82f6', '#a855f7', '#22c55e']
   return colors[i % colors.length]
@@ -118,13 +123,18 @@ export default function MapView({
         <RouteLayer routes={routes} activeMode={activeMode} transportMode={transportMode} />
       </MapContainer>
 
-      <div className="absolute top-4 left-4 z-[1000]">
+      <div className="absolute top-4 left-4 z-[1000] flex gap-2">
         <button
           onClick={onToggleDark}
           className="bg-slate-900/80 backdrop-blur rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800 transition flex items-center gap-2"
         >
           {mapDark ? '☀️ Light' : '🌙 Dark'}
         </button>
+        {isNight() && (
+          <span className="bg-indigo-900/80 backdrop-blur rounded-lg border border-indigo-700 px-3 py-2 text-xs text-indigo-300 flex items-center gap-1.5">
+            🌙 Night
+          </span>
+        )}
       </div>
 
     </div>
