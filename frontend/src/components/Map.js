@@ -40,7 +40,7 @@ function MapClickHandler({ onMapClick }) {
   return null
 }
 
-function RouteLayer({ routes, activeMode }) {
+function RouteLayer({ routes, activeMode, transportMode }) {
   const map = useMap()
   const layersRef = useRef({})
 
@@ -65,7 +65,8 @@ function RouteLayer({ routes, activeMode }) {
       }).addTo(map)
 
       if (route.total_distance_km && route.avg_safety_score) {
-        const time = route.estimated_time_min || Math.round((route.total_distance_km / 35) * 60)
+        const speed = { car: 35, motorcycle: 30, walk: 5 }[transportMode] || 35
+        const time = route.estimated_time_min || Math.round((route.total_distance_km / speed) * 60)
         const label = multiple ? `Route ${i + 1}` : 'Route'
         polyline.bindPopup(
           `<div style="font-size:13px; min-width:180px">
@@ -92,7 +93,7 @@ function RouteLayer({ routes, activeMode }) {
 }
 
 export default function MapView({
-  routes, activeMode,
+  routes, activeMode, transportMode,
   onMapClick, mapDark, onToggleDark,
 }) {
   const defaultCenter = [28.6139, 77.2090]
@@ -114,7 +115,7 @@ export default function MapView({
           url={mapDark ? darkTile : lightTile}
         />
         <MapClickHandler onMapClick={onMapClick} />
-        <RouteLayer routes={routes} activeMode={activeMode} />
+        <RouteLayer routes={routes} activeMode={activeMode} transportMode={transportMode} />
       </MapContainer>
 
       <div className="absolute top-4 left-4 z-[1000]">

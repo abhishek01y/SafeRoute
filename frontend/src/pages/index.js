@@ -74,6 +74,7 @@ export default function Home() {
           <MapView
             routes={routes}
             activeMode={activeMode}
+            transportMode={transportMode}
             mapDark={mapDark}
             onToggleDark={() => setMapDark(!mapDark)}
             onMapClick={handleMapClick}
@@ -84,6 +85,7 @@ export default function Home() {
               routes={routes}
               activeMode={activeMode}
               setActiveMode={setActiveMode}
+              transportMode={transportMode}
             />
           )}
 

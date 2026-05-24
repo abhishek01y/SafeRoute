@@ -1,5 +1,6 @@
-function calcTime(distKm) {
-  return Math.round((distKm / 35) * 60)
+function calcTime(distKm, transport) {
+  const speed = { car: 35, motorcycle: 30, walk: 5 }[transport] || 35
+  return Math.round((distKm / speed) * 60)
 }
 
 const MODES = ['shortest', 'balanced', 'safest']
@@ -28,7 +29,7 @@ function getUniqueRoutes(routes) {
 
 const COLORS = ['bg-blue-500', 'bg-purple-500', 'bg-green-500']
 
-export default function RouteInfo({ routes, activeMode, setActiveMode }) {
+export default function RouteInfo({ routes, activeMode, setActiveMode, transportMode }) {
   if (!routes) return null
 
   const unique = getUniqueRoutes(routes)
@@ -38,7 +39,7 @@ export default function RouteInfo({ routes, activeMode, setActiveMode }) {
     <div className="bg-slate-900 border-t border-slate-700 p-3">
       <div className="flex items-center gap-3 justify-center">
         {unique.map((data, i) => {
-          const time = data.estimated_time_min || calcTime(data.total_distance_km)
+          const time = data.estimated_time_min || calcTime(data.total_distance_km, transportMode)
           const label = multiple ? `Route ${i + 1}` : 'Route'
           const isActive = data._key === activeMode
 
