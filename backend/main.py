@@ -10,7 +10,7 @@ import asyncio
 
 
 def is_night_time():
-    h = datetime.now().hour
+    h = (datetime.utcnow().hour + 5) % 24  # IST = UTC+5:30, approximate hour
     return h < 6 or h >= 19
 
 from data_loader import load_and_segment_delhi_data
