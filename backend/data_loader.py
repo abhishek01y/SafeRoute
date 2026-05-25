@@ -44,11 +44,9 @@ def load_osm_pbf_highways(pbf_path, existing_G, segment_length_m=75):
     print(f"[INFO] Loading OSM PBF: {os.path.basename(pbf_path)}")
     try:
         osm = OSM(pbf_path)
-        driving = osm.get_network(network_type="driving")
-        walking = osm.get_network(network_type="walking")
-        combined = pd.concat([driving, walking]).drop_duplicates(subset=['geometry']).reset_index(drop=True) if driving is not None and walking is not None else (driving if driving is not None else walking)
+        combined = osm.get_network(network_type="driving")
         if combined is None or len(combined) == 0:
-            print(f"[WARN] No roads found in {pbf_path}")
+            print(f"[WARN] No drivable roads found in {pbf_path}")
             return existing_G
     except Exception as e:
         print(f"[WARN] Failed to load OSM PBF {pbf_path}: {e}")
@@ -57,16 +55,20 @@ def load_osm_pbf_highways(pbf_path, existing_G, segment_length_m=75):
     G = existing_G
     edge_id_counter = max([d.get('edge_id', 0) for _, _, d in G.edges(data=True)] + [0]) + 1
 
-    print(f"[INFO] OSM: {len(combined)} road features from {os.path.basename(pbf_path)}")
+    print(f"[INFO] OSM: {len(combined)} highway features from {os.path.basename(pbf_path)}")
 
     if 'highway' in combined.columns:
-        combined = combined[combined['highway'].notna()].copy()
+        combined = combined[combined['highway'].notna()]
 
     if combined.crs and combined.crs.to_string() != "EPSG:4326":
         combined = combined.to_crs("EPSG:4326")
 
-    unique_types = combined['highway'].dropna().unique() if 'highway' in combined.columns else ['unknown']
-    print(f"[INFO] OSM highway types found ({len(unique_types)}): {list(unique_types)[:40]}")
+    try:
+        if 'highway' in combined.columns:
+            ut = combined['highway'].dropna().unique().tolist()[:20]
+            print(f"[INFO] OSM highway types: {ut}")
+    except Exception:
+        pass
 
     for idx, row in combined.iterrows():
         if idx % 5000 == 0 and idx > 0:
