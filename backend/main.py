@@ -174,7 +174,7 @@ async def compare_routes(req: RouteRequest):
 
     comparison = router.compare_routes(start_node, end_node, req.user_weight, req.transport, is_night=is_night_time())
 
-    speed_kmh = {"car": 35, "motorcycle": 30, "walk": 5}.get(req.transport, 30)
+    speed_kmh = {"car": 20, "motorcycle": 25, "walk": 5}.get(req.transport, 20)
     result = {}
     for mode_name, mode_result in comparison.items():
         if 'error' not in mode_result:

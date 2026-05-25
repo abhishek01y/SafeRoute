@@ -70,7 +70,7 @@ function RouteLayer({ routes, activeMode, transportMode }) {
       }).addTo(map)
 
       if (route.total_distance_km && route.avg_safety_score) {
-        const speed = { car: 35, motorcycle: 30, walk: 5 }[transportMode] || 35
+        const speed = { car: 20, motorcycle: 25, walk: 5 }[transportMode] || 20
         const time = route.estimated_time_min || Math.round((route.total_distance_km / speed) * 60)
         const label = multiple ? `Route ${i + 1}` : 'Route'
         polyline.bindPopup(

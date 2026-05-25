@@ -1,5 +1,5 @@
 function calcTime(distKm, transport) {
-  const speed = { car: 35, motorcycle: 30, walk: 5 }[transport] || 35
+  const speed = { car: 20, motorcycle: 25, walk: 5 }[transport] || 20
   return Math.round((distKm / speed) * 60)
 }
 
