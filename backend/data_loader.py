@@ -1,203 +1,259 @@
-import geopandas as gpd
-import networkx as nx
-import numpy as np
-import pandas as pd
-from shapely.geometry import LineString, Point
-from shapely.ops import substring
 import os
+import pickle
+import gzip
+import networkx as nx
+
 
 def load_and_segment_delhi_data(
     highway_shp_path="data/delhi_highway.shp",
     poi_shp_path="data/delhi_poi.shp",
     admin_shp_path="data/delhi_administrative.shp",
-    segment_length_m=75
+    segment_length_m=500
 ):
-    G = nx.DiGraph()
+    data_dir = os.path.join(os.path.dirname(highway_shp_path) or "data")
+
+    for pkl in ["delhi_graph.pkl.gz", "delhi_graph.pkl"]:
+        pkl_path = os.path.join(data_dir, pkl)
+        if os.path.exists(pkl_path):
+            print(f"[INFO] Loading pre-processed graph from {pkl_path}...")
+            open_fn = gzip.open if pkl.endswith('.gz') else open
+            with open_fn(pkl_path, 'rb') as f:
+                G = pickle.load(f)
+            print(f"[INFO] Loaded: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
+            return G
+
+    pbf_files = sorted([f for f in os.listdir(data_dir) if f.endswith('.osm.pbf')])
+    if pbf_files:
+        print(f"[INFO] Found {len(pbf_files)} OSM PBF file(s): {pbf_files}")
+        return _load_from_pbf(data_dir, pbf_files, segment_length_m)
 
     if not os.path.exists(highway_shp_path):
-        print(f"[WARN] Highway shapefile not found at {highway_shp_path}. Using synthetic Delhi roads.")
+        print(f"[WARN] No pickle, PBF, or shapefile found. Using synthetic graph.")
         return _create_synthetic_graph()
+
+    return _load_from_shapefile(highway_shp_path, poi_shp_path, admin_shp_path, segment_length_m)
+
+
+def _load_from_pbf(pbf_dir, pbf_files, segment_length_m=500):
+    import osmium
+    from shapely.geometry import LineString
+    from shapely.ops import substring
+    from collections import defaultdict
+
+    drivable = {
+        'motorway', 'motorway_link', 'trunk', 'trunk_link',
+        'primary', 'primary_link', 'secondary', 'secondary_link',
+        'tertiary', 'tertiary_link', 'residential', 'living_street',
+        'service', 'unclassified',
+    }
+
+    type_safety = {
+        'motorway': 75, 'motorway_link': 70,
+        'trunk': 70, 'trunk_link': 65,
+        'primary': 65, 'primary_link': 60,
+        'secondary': 55, 'secondary_link': 50,
+        'tertiary': 45, 'tertiary_link': 40,
+        'residential': 35, 'living_street': 40,
+        'service': 30, 'unclassified': 30,
+    }
+
+    all_roads = []
+    needed_nodes = set()
+
+    for fpath in pbf_files:
+        fname = os.path.basename(fpath)
+
+        class WayCollector(osmium.SimpleHandler):
+            def __init__(self):
+                super().__init__()
+                self.roads = []
+            def way(self, w):
+                hw = w.tags.get('highway')
+                if hw and hw in drivable:
+                    self.roads.append({
+                        'id': w.id,
+                        'nodes': [nd.ref for nd in w.nodes if nd.ref != 0],
+                        'name': w.tags.get('name', 'Unnamed Road'),
+                        'highway': hw,
+                        'lanes': w.tags.get('lanes', '1'),
+                        'oneway': w.tags.get('oneway', 'no'),
+                        'maxspeed': w.tags.get('maxspeed', '50'),
+                    })
+
+        wc = WayCollector()
+        print(f"[PBF] Reading {fname} (pass 1: ways)...", flush=True)
+        wc.apply_file(fpath)
+        print(f"  {len(wc.roads)} drivable roads", flush=True)
+        all_roads.extend(wc.roads)
+
+    for road in all_roads:
+        for ref in road['nodes']:
+            needed_nodes.add(ref)
+    print(f"[PBF] {len(all_roads)} ways, {len(needed_nodes)} unique nodes", flush=True)
+
+    node_coords = {}
+    for fpath in pbf_files:
+        fname = os.path.basename(fpath)
+
+        class NodeCollector(osmium.SimpleHandler):
+            def __init__(self, needed):
+                super().__init__()
+                self.needed = needed
+                self.coords = {}
+                self.found = 0
+            def node(self, n):
+                if n.id in self.needed:
+                    self.coords[n.id] = (n.location.lat, n.location.lon)
+                    self.found += 1
+
+        nc = NodeCollector(needed_nodes)
+        print(f"[PBF] Reading {fname} (pass 2: nodes)...", flush=True)
+        nc.apply_file(fpath)
+        print(f"  {nc.found} node coordinates", flush=True)
+        node_coords.update(nc.coords)
+        needed_nodes -= nc.coords.keys()
+
+    print(f"[PBF] Building graph...", flush=True)
+    G = nx.DiGraph()
+    skipped = 0
+
+    for road in all_roads:
+        coords = []
+        for ref in road['nodes']:
+            if ref in node_coords:
+                lat, lon = node_coords[ref]
+                coords.append((lon, lat))
+        if len(coords) < 2:
+            skipped += 1
+            continue
+
+        try:
+            line = LineString(coords)
+        except Exception:
+            skipped += 1
+            continue
+
+        seg_length = line.length * 111.0 * 1000
+        num_segments = max(1, int(seg_length / segment_length_m))
+        base_safety = type_safety.get(road['highway'].lower(), 40)
+        lanes = int(road['lanes']) if road['lanes'].isdigit() else 1
+
+        for i in range(num_segments):
+            try:
+                sub_seg = substring(line, i / num_segments, (i + 1) / num_segments, normalized=True)
+            except Exception:
+                continue
+            if sub_seg is None or sub_seg.length < 1e-8:
+                continue
+            sc = list(sub_seg.coords)
+            if len(sc) < 2:
+                continue
+
+            u = (round(sc[0][1], 6), round(sc[0][0], 6))
+            v = (round(sc[-1][1], 6), round(sc[-1][0], 6))
+            length_km = sub_seg.length * 111.0
+
+            G.add_edge(u, v,
+                name=road['name'], type=road['highway'], lanes=lanes,
+                oneway=road['oneway'], maxspeed=road['maxspeed'],
+                length_km=length_km, safety_score=base_safety,
+                lighting_score=base_safety * 0.7, poi_density=base_safety * 0.8,
+                footfall=base_safety * 0.6, crime_risk=20.0,
+                ai_sentiment=10.0, crowdsourced_risk=5.0)
+
+            if road['oneway'] != 'yes':
+                G.add_edge(v, u,
+                    name=road['name'], type=road['highway'], lanes=lanes,
+                    oneway=road['oneway'], maxspeed=road['maxspeed'],
+                    length_km=length_km, safety_score=base_safety,
+                    lighting_score=base_safety * 0.7, poi_density=base_safety * 0.8,
+                    footfall=base_safety * 0.6, crime_risk=20.0,
+                    ai_sentiment=10.0, crowdsourced_risk=5.0)
+
+    print(f"[PBF] Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges ({skipped} ways skipped)")
+    G = _merge_nearby_nodes(G, tolerance=0.0003)
+    return G
+
+
+def _load_from_shapefile(highway_shp_path, poi_shp_path, admin_shp_path, segment_length_m=75):
+    import geopandas as gpd
+    import networkx as nx
+    import pandas as pd
+    import numpy as np
+    from shapely.geometry import LineString, Point
+    from shapely.ops import substring
+
+    G = nx.DiGraph()
 
     highways = gpd.read_file(highway_shp_path)
     if highways.crs and highways.crs.to_string() != "EPSG:4326":
         highways = highways.to_crs("EPSG:4326")
 
-    pois = None
-    if os.path.exists(poi_shp_path):
-        pois = gpd.read_file(poi_shp_path)
-        if pois.crs and pois.crs.to_string() != "EPSG:4326":
-            pois = pois.to_crs("EPSG:4326")
-
-    admin = None
-    if os.path.exists(admin_shp_path):
-        admin = gpd.read_file(admin_shp_path)
-        if admin.crs and admin.crs.to_string() != "EPSG:4326":
-            admin = admin.to_crs("EPSG:4326")
-
-    poi_tree, _ = build_poi_spatial_index(pois)
-
     edge_id_counter = 0
-
-    if 'TYPE' in highways.columns:
-        major_types = ['primary', 'secondary', 'tertiary', 'trunk', 'motorway', 'primary_link', 'secondary_link', 'tertiary_link']
-        major_mask = highways['TYPE'].isin(major_types)
-        print(f"[INFO] Major roads: {major_mask.sum()}, Total: {len(highways)}")
-    else:
-        print(f"[INFO] Total roads: {len(highways)}")
-
     total = len(highways)
-    print(f"[INFO] Processing all {total} road features...")
-    import sys
-    sys.stdout.flush()
+
+    type_safety = {
+        'motorway': 75, 'trunk': 70, 'primary': 65,
+        'secondary': 55, 'tertiary': 45,
+        'primary_link': 60, 'secondary_link': 50, 'tertiary_link': 40,
+        'residential': 35, 'service': 30, 'living_street': 40,
+        'unclassified': 30, 'path': 15, 'footway': 10,
+    }
 
     for idx, row in highways.iterrows():
         if idx % 2000 == 0 and idx > 0:
-            pct = idx / total * 100
-            print(f"[INFO] {pct:.0f}% complete ({idx}/{total})... ({G.number_of_edges()} edges)")
-            sys.stdout.flush()
+            print(f"[SHP] {100*idx//total}% ({G.number_of_edges()} edges)", flush=True)
 
         line = row.geometry
         if line is None or line.geom_type not in ('LineString', 'MultiLineString'):
             continue
 
-        if line.geom_type == 'MultiLineString':
-            lines = list(line.geoms)
-        else:
-            lines = [line]
-
+        lines = list(line.geoms) if line.geom_type == 'MultiLineString' else [line]
         for segment_line in lines:
             road_name = str(row.get('NAME', 'Unnamed Road')) if 'NAME' in row.index and pd.notna(row.get('NAME')) else 'Unnamed Road'
             road_type = str(row.get('TYPE', 'residential')) if 'TYPE' in row.index and pd.notna(row.get('TYPE')) else 'residential'
-            lanes_val = row.get('LANES', 1) if 'LANES' in row.index else 1
-            lanes = int(lanes_val) if pd.notna(lanes_val) else 1
+            lanes = int(row.get('LANES', 1)) if 'LANES' in row.index and pd.notna(row.get('LANES')) else 1
             oneway = str(row.get('ONEWAY', 'no')) if 'ONEWAY' in row.index and pd.notna(row.get('ONEWAY')) else 'no'
 
             seg_length = segment_line.length * 111000
-            if seg_length < 1:
-                seg_length = segment_line.length * 111320
-
-            num_segments = max(1, int(seg_length / segment_length_m))
-            if num_segments > 50:
-                num_segments = 50
+            num_segments = max(1, min(50, int(seg_length / segment_length_m)))
+            base_safety = type_safety.get(road_type.lower(), 40)
 
             for i in range(num_segments):
-                start_frac = i / num_segments
-                end_frac = (i + 1) / num_segments
-
                 try:
-                    sub_seg = substring(segment_line, start_frac, end_frac, normalized=True)
+                    sub_seg = substring(segment_line, i / num_segments, (i + 1) / num_segments, normalized=True)
                 except Exception:
                     continue
-
                 if sub_seg is None or sub_seg.length < 1e-8:
                     continue
-
                 coords = list(sub_seg.coords)
                 if len(coords) < 2:
                     continue
 
-                start_node = (round(coords[0][1], 6), round(coords[0][0], 6))
-                end_node = (round(coords[-1][1], 6), round(coords[-1][0], 6))
+                u = (round(coords[0][1], 6), round(coords[0][0], 6))
+                v = (round(coords[-1][1], 6), round(coords[-1][0], 6))
+                length_km = sub_seg.length * 111.0
 
-                sub_length_km = sub_seg.length * 111.0
-
-                type_safety = {
-                    'motorway': 75, 'trunk': 70, 'primary': 65,
-                    'secondary': 55, 'tertiary': 45,
-                    'primary_link': 60, 'secondary_link': 50, 'tertiary_link': 40,
-                    'residential': 35, 'service': 30, 'living_street': 40,
-                    'unclassified': 30, 'path': 15, 'footway': 10,
-                }
-                base_type = road_type.lower() if isinstance(road_type, str) else 'unclassified'
-                base_safety = type_safety.get(base_type, 40)
-
-                poi_density = base_safety * 0.8
-                lighting_score = base_safety * 0.7
-                footfall = base_safety * 0.6
-
-                G.add_edge(
-                    start_node, end_node,
-                    edge_id=edge_id_counter,
-                    name=road_name, type=road_type, lanes=lanes, oneway=oneway,
-                    length_km=sub_length_km, poi_density=poi_density,
-                    lighting_score=lighting_score, footfall=footfall,
-                    crime_risk=20.0, ai_sentiment=10.0, crowdsourced_risk=5.0,
-                    safety_score=base_safety, geometry=sub_seg.wkt
-                )
+                G.add_edge(u, v,
+                    edge_id=edge_id_counter, name=road_name, type=road_type,
+                    lanes=lanes, oneway=oneway, length_km=length_km,
+                    safety_score=base_safety, lighting_score=base_safety * 0.7,
+                    poi_density=base_safety * 0.8, footfall=base_safety * 0.6,
+                    crime_risk=20.0, ai_sentiment=10.0, crowdsourced_risk=5.0)
                 edge_id_counter += 1
 
                 if oneway != 'yes':
-                    G.add_edge(
-                        end_node, start_node,
-                        edge_id=edge_id_counter,
-                        name=road_name, type=road_type, lanes=lanes, oneway=oneway,
-                        length_km=sub_length_km, poi_density=poi_density,
-                        lighting_score=lighting_score, footfall=footfall,
-                        crime_risk=20.0, ai_sentiment=10.0, crowdsourced_risk=5.0,
-                        safety_score=base_safety, geometry=sub_seg.wkt
-                    )
+                    G.add_edge(v, u,
+                        edge_id=edge_id_counter, name=road_name, type=road_type,
+                        lanes=lanes, oneway=oneway, length_km=length_km,
+                        safety_score=base_safety, lighting_score=base_safety * 0.7,
+                        poi_density=base_safety * 0.8, footfall=base_safety * 0.6,
+                        crime_risk=20.0, ai_sentiment=10.0, crowdsourced_risk=5.0)
                     edge_id_counter += 1
 
-    print(f"[INFO] Graph built: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
-    print(f"[INFO] Merging nearby nodes to create intersections...")
+    print(f"[SHP] Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
     G = _merge_nearby_nodes(G, tolerance=0.0003)
-    print(f"[INFO] After merge: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
     return G
-
-
-def build_poi_spatial_index(pois_gdf):
-    if pois_gdf is None or len(pois_gdf) == 0:
-        return None, None
-    try:
-        from shapely.strtree import STRtree
-        tree = STRtree(list(pois_gdf.geometry))
-        return tree, pois_gdf
-    except Exception as e:
-        print(f"[WARN] Could not build spatial index: {e}")
-        return None, pois_gdf
-
-
-def _calculate_poi_density(segment, tree, pois_gdf, radius_deg=0.002):
-    if tree is None or pois_gdf is None:
-        return 50.0
-
-    try:
-        centroid = segment.centroid if hasattr(segment, 'centroid') else segment
-        if centroid is None:
-            return 50.0
-        buffer = centroid.buffer(radius_deg)
-        candidates = tree.query(buffer)
-        count = len(candidates)
-    except Exception:
-        count = 0
-
-    density = min(100.0, count * 8.0)
-    return max(10.0, density)
-
-
-def _calculate_footfall(segment, tree, pois_gdf, radius_deg=0.003):
-    if tree is None or pois_gdf is None:
-        return 40.0
-
-    try:
-        centroid = segment.centroid if hasattr(segment, 'centroid') else segment
-        if centroid is None:
-            return 40.0
-        buffer = centroid.buffer(radius_deg)
-        candidates = tree.query(buffer)
-        transit_count = 0
-        if 'CATEGORY' in pois_gdf.columns:
-            for geom in candidates:
-                mask = pois_gdf.geometry == geom
-                if mask.any():
-                    cat = pois_gdf.loc[mask, 'CATEGORY'].values[0]
-                    if isinstance(cat, str) and any(kw in cat.lower() for kw in ['transport', 'metro', 'bus', 'railway']):
-                        transit_count += 1
-    except Exception:
-        transit_count = 0
-
-    footfall = min(100.0, 30.0 + transit_count * 12.0)
-    return footfall
 
 
 def _merge_nearby_nodes(G, tolerance=0.0003):
@@ -209,50 +265,37 @@ def _merge_nearby_nodes(G, tolerance=0.0003):
 
     node_map = {}
     merged_count = 0
-    for cell_key, nodes in grid.items():
+    for nodes in grid.values():
         if len(nodes) < 2:
             node_map[nodes[0]] = nodes[0]
             continue
         sorted_nodes = sorted(nodes, key=lambda n: (n[0], n[1]))
-        representative = sorted_nodes[0]
+        rep = sorted_nodes[0]
         for n in sorted_nodes[1:]:
-            node_map[n] = representative
+            node_map[n] = rep
             merged_count += 1
-        node_map[sorted_nodes[0]] = representative
+        node_map[sorted_nodes[0]] = rep
 
     if merged_count == 0:
         return G
 
     new_G = nx.DiGraph()
     for u, v, data in G.edges(data=True):
-        new_u = node_map.get(u, u)
-        new_v = node_map.get(v, v)
-        if new_u != new_v:
-            if new_G.has_edge(new_u, new_v):
-                existing = new_G[new_u][new_v]
-                existing['safety_score'] = (existing['safety_score'] + data['safety_score']) / 2
+        nu, nv = node_map.get(u, u), node_map.get(v, v)
+        if nu != nv:
+            if new_G.has_edge(nu, nv):
+                new_G[nu][nv]['safety_score'] = (new_G[nu][nv]['safety_score'] + data['safety_score']) / 2
             else:
-                new_G.add_edge(new_u, new_v, **data)
+                new_G.add_edge(nu, nv, **data)
 
-    for node in G.nodes():
-        mapped = node_map.get(node, node)
-        if mapped not in new_G:
-            new_G.add_node(mapped)
-
-    print(f"[INFO] Merged {merged_count} nearby nodes into intersections")
+    print(f"[INFO] Merged {merged_count} nearby nodes")
     return new_G
 
 
-def _compute_base_safety(P, C, L, F, S, U):
-    w1, w2, w3, w4, w5, w6 = 0.15, 0.30, 0.20, 0.15, 0.15, 0.05
-    score = (w1 * P) - (w2 * C) + (w3 * L) + (w4 * F) - (w5 * S) + (w6 * U)
-    return max(0.0, min(100.0, score))
-
-
 def _create_synthetic_graph():
+    import random
     G = nx.DiGraph()
-
-    synthetic_roads = [
+    roads_data = [
         ("Connaught Place", 28.6315, 77.2167, 28.6325, 77.2180),
         ("India Gate", 28.6129, 77.2295, 28.6145, 77.2310),
         ("Lajpat Nagar", 28.5650, 77.2430, 28.5670, 77.2450),
@@ -266,63 +309,17 @@ def _create_synthetic_graph():
         ("Nehru Place", 28.5480, 77.2510, 28.5500, 77.2530),
         ("Pitampura", 28.7010, 77.1400, 28.7030, 77.1420),
         ("Janakpuri", 28.6210, 77.0900, 28.6230, 77.0920),
-        ("Mayur Vihar", 28.6100, 77.2900, 28.6120, 77.2920),
-        ("Greater Kailash", 28.5570, 77.2400, 28.5590, 77.2420),
     ]
-
-    edge_id_counter = 0
-    for name, lat1, lon1, lat2, lon2 in synthetic_roads:
-        import random
-        poi_density = random.uniform(20, 95)
-        lighting = random.uniform(20, 100)
-        footfall = random.uniform(15, 90)
-        crime = random.uniform(5, 60)
-        sentiment = random.uniform(5, 40)
-        crowd = random.uniform(0, 30)
-
-        safety = _compute_base_safety(poi_density, crime, lighting, footfall, sentiment, crowd)
-
-        G.add_edge(
-            (round(lat1, 6), round(lon1, 6)),
-            (round(lat2, 6), round(lon2, 6)),
-            edge_id=edge_id_counter,
-            name=name,
-            type="synthetic",
-            lanes=2,
-            oneway="no",
-            lit="yes" if lighting > 50 else "no",
-            maxspeed="50",
-            length_km=0.5,
-            poi_density=poi_density,
-            lighting_score=lighting,
-            footfall=footfall,
-            crime_risk=crime,
-            ai_sentiment=sentiment,
-            crowdsourced_risk=crowd,
-            safety_score=safety
-        )
-        edge_id_counter += 1
-
-        G.add_edge(
-            (round(lat2, 6), round(lon2, 6)),
-            (round(lat1, 6), round(lon1, 6)),
-            edge_id=edge_id_counter,
-            name=name,
-            type="synthetic",
-            lanes=2,
-            oneway="no",
-            lit="yes" if lighting > 50 else "no",
-            maxspeed="50",
-            length_km=0.5,
-            poi_density=poi_density,
-            lighting_score=lighting,
-            footfall=footfall,
-            crime_risk=crime,
-            ai_sentiment=sentiment,
-            crowdsourced_risk=crowd,
-            safety_score=safety
-        )
-        edge_id_counter += 1
-
-    print(f"[INFO] Synthetic graph built: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
+    for name, lat1, lon1, lat2, lon2 in roads_data:
+        s = random.uniform(20, 90)
+        u, v = (round(lat1, 6), round(lon1, 6)), (round(lat2, 6), round(lon2, 6))
+        G.add_edge(u, v, name=name, type="synthetic", lanes=2, oneway="no",
+            maxspeed="50", length_km=0.5, safety_score=s,
+            lighting_score=s*0.7, poi_density=s*0.8, footfall=s*0.6,
+            crime_risk=20.0, ai_sentiment=10.0, crowdsourced_risk=5.0)
+        G.add_edge(v, u, name=name, type="synthetic", lanes=2, oneway="no",
+            maxspeed="50", length_km=0.5, safety_score=s,
+            lighting_score=s*0.7, poi_density=s*0.8, footfall=s*0.6,
+            crime_risk=20.0, ai_sentiment=10.0, crowdsourced_risk=5.0)
+    print(f"[INFO] Synthetic graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
     return G
