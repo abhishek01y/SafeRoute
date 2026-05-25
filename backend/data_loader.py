@@ -8,6 +8,32 @@ import os
 import glob
 
 
+TYPE_SAFETY = {
+    'motorway': 88, 'motorway_link': 82,
+    'trunk': 85, 'trunk_link': 80,
+    'primary': 82, 'primary_link': 78,
+    'secondary': 78, 'secondary_link': 74,
+    'tertiary': 75, 'tertiary_link': 72,
+    'residential': 70, 'service': 65, 'living_street': 68,
+    'unclassified': 60, 'road': 55,
+    'path': 40, 'footway': 35, 'pedestrian': 50,
+    'cycleway': 45, 'track': 40, 'bridleway': 35, 'steps': 25,
+}
+
+
+def get_base_safety(hw_val):
+    if not isinstance(hw_val, str):
+        return 60
+    hw_lower = hw_val.lower().strip()
+    direct = TYPE_SAFETY.get(hw_lower)
+    if direct is not None:
+        return direct
+    for key, val in TYPE_SAFETY.items():
+        if key in hw_lower or hw_lower in key:
+            return val
+    return 60
+
+
 def load_osm_pbf_highways(pbf_path, existing_G, segment_length_m=75):
     try:
         from pyrosm import OSM
@@ -39,13 +65,8 @@ def load_osm_pbf_highways(pbf_path, existing_G, segment_length_m=75):
     if combined.crs and combined.crs.to_string() != "EPSG:4326":
         combined = combined.to_crs("EPSG:4326")
 
-    type_safety = {
-        'motorway': 88, 'trunk': 85, 'primary': 82,
-        'secondary': 78, 'tertiary': 75,
-        'primary_link': 80, 'secondary_link': 76, 'tertiary_link': 72,
-        'residential': 70, 'service': 65, 'living_street': 68,
-        'unclassified': 55, 'path': 40, 'footway': 35,
-    }
+    unique_types = combined['highway'].dropna().unique() if 'highway' in combined.columns else ['unknown']
+    print(f"[INFO] OSM highway types found ({len(unique_types)}): {list(unique_types)[:40]}")
 
     for idx, row in combined.iterrows():
         if idx % 5000 == 0 and idx > 0:
@@ -94,8 +115,7 @@ def load_osm_pbf_highways(pbf_path, existing_G, segment_length_m=75):
 
                 sub_length_km = sub_seg.length * 111.0
 
-                base_type = hw.lower() if isinstance(hw, str) else 'unclassified'
-                base_safety = type_safety.get(base_type, 55)
+                base_safety = get_base_safety(hw)
                 poi_density = base_safety * 0.8
                 lighting_score = base_safety * 0.7
                 footfall = base_safety * 0.6
@@ -238,15 +258,7 @@ def load_and_segment_delhi_data(
 
                 sub_length_km = sub_seg.length * 111.0
 
-                type_safety = {
-                    'motorway': 88, 'trunk': 85, 'primary': 82,
-                    'secondary': 78, 'tertiary': 75,
-                    'primary_link': 80, 'secondary_link': 76, 'tertiary_link': 72,
-                    'residential': 70, 'service': 65, 'living_street': 68,
-                    'unclassified': 55, 'path': 40, 'footway': 35,
-                }
-                base_type = road_type.lower() if isinstance(road_type, str) else 'unclassified'
-                base_safety = type_safety.get(base_type, 40)
+                base_safety = get_base_safety(road_type)
 
                 poi_density = base_safety * 0.8
                 lighting_score = base_safety * 0.7
