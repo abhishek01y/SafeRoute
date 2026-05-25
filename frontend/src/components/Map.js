@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 
@@ -37,9 +37,25 @@ function getUniqueRoutes(routes) {
 }
 
 function MapClickHandler({ onMapClick }) {
+  const map = useMap()
   useMapEvents({
     click(e) {
-      if (onMapClick) onMapClick(e.latlng)
+      const angle = map._rotationAngle || 0
+      if (angle !== 0) {
+        const center = map.getSize().divideBy(2)
+        const dx = e.containerPoint.x - center.x
+        const dy = e.containerPoint.y - center.y
+        const rad = (-angle * Math.PI) / 180
+        const cosA = Math.cos(rad)
+        const sinA = Math.sin(rad)
+        const rotDx = dx * cosA - dy * sinA
+        const rotDy = dx * sinA + dy * cosA
+        const rotPoint = L.point(center.x + rotDx, center.y + rotDy)
+        const adjustedLatLng = map.containerPointToLatLng(rotPoint)
+        if (onMapClick) onMapClick(adjustedLatLng)
+      } else {
+        if (onMapClick) onMapClick(e.latlng)
+      }
     },
   })
   return null
@@ -97,6 +113,66 @@ function RouteLayer({ routes, activeMode, transportMode }) {
   return null
 }
 
+function CompassControl() {
+  const map = useMap()
+  const [angle, setAngle] = useState(0)
+
+  const rotateMap = useCallback((deg) => {
+    const newAngle = ((angle + deg) % 360 + 360) % 360
+    setAngle(newAngle)
+    map._rotationAngle = newAngle
+    const container = map.getContainer()
+    const mapPane = container.querySelector('.leaflet-map-pane')
+    if (mapPane) {
+      mapPane.style.transformOrigin = '50% 50%'
+      mapPane.style.transform = `rotate(${newAngle}deg)`
+    }
+  }, [angle, map])
+
+  const resetRotation = useCallback(() => {
+    setAngle(0)
+    map._rotationAngle = 0
+    const container = map.getContainer()
+    const mapPane = container.querySelector('.leaflet-map-pane')
+    if (mapPane) {
+      mapPane.style.transformOrigin = '50% 50%'
+      mapPane.style.transform = 'rotate(0deg)'
+    }
+  }, [map])
+
+  const needleRotation = angle
+
+  return (
+    <div className="absolute bottom-20 right-4 z-[1000] flex flex-col items-center gap-1">
+      <button
+        onClick={() => rotateMap(90)}
+        onContextMenu={(e) => { e.preventDefault(); rotateMap(-90) }}
+        onDoubleClick={(e) => { e.preventDefault(); resetRotation() }}
+        title="Click to rotate 90° CW | Right-click: 90° CCW | Double-click: Reset North"
+        className="w-12 h-12 rounded-full bg-slate-900/90 backdrop-blur border border-slate-600 hover:border-blue-500 transition-all flex items-center justify-center shadow-lg cursor-pointer select-none"
+      >
+        <svg viewBox="0 0 50 50" className="w-8 h-8" style={{ transform: `rotate(${-needleRotation}deg)` }}>
+          <circle cx="25" cy="25" r="23" fill="none" stroke="#475569" strokeWidth="1.5" />
+          <line x1="25" y1="3" x2="25" y2="47" stroke="#475569" strokeWidth="0.8" />
+          <line x1="3" y1="25" x2="47" y2="25" stroke="#475569" strokeWidth="0.8" />
+          <polygon points="25,4 21,20 25,17 29,20" fill="#ef4444" />
+          <polygon points="25,46 21,30 25,33 29,30" fill="#94a3b8" />
+          <circle cx="25" cy="25" r="3" fill="#1e293b" stroke="#475569" strokeWidth="1" />
+          <text x="25" y="10" textAnchor="middle" fontSize="6" fill="#ef4444" fontWeight="bold">N</text>
+        </svg>
+      </button>
+      {angle !== 0 && (
+        <button
+          onClick={resetRotation}
+          className="text-[10px] text-slate-400 hover:text-white bg-slate-800/80 rounded px-2 py-0.5 border border-slate-600"
+        >
+          Reset
+        </button>
+      )}
+    </div>
+  )
+}
+
 export default function MapView({
   routes, activeMode, transportMode,
   onMapClick, mapDark, onToggleDark,
@@ -121,22 +197,27 @@ export default function MapView({
         />
         <MapClickHandler onMapClick={onMapClick} />
         <RouteLayer routes={routes} activeMode={activeMode} transportMode={transportMode} />
+        <CompassControl />
       </MapContainer>
 
       <div className="absolute top-4 left-4 z-[1000] flex gap-2">
         <button
           onClick={onToggleDark}
-          className="bg-slate-900/80 backdrop-blur rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800 transition flex items-center gap-2"
+          className="bg-slate-900/80 backdrop-blur rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800 transition flex items-center gap-2 shadow-lg"
         >
           {mapDark ? '☀️ Light' : '🌙 Dark'}
         </button>
         {isNight() && (
-          <span className="bg-indigo-900/80 backdrop-blur rounded-lg border border-indigo-700 px-3 py-2 text-xs text-indigo-300 flex items-center gap-1.5">
+          <span className="bg-indigo-900/80 backdrop-blur rounded-lg border border-indigo-700 px-3 py-2 text-xs text-indigo-300 flex items-center gap-1.5 shadow-lg">
             🌙 Night
           </span>
         )}
       </div>
 
+      <div className="absolute bottom-4 left-4 z-[1000] flex items-center gap-2 bg-slate-900/70 backdrop-blur rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-400 shadow-lg">
+        <span className="inline-block w-2 h-2 rounded-full bg-blue-500"></span>
+        <span>Click map to set locations</span>
+      </div>
     </div>
   )
 }
