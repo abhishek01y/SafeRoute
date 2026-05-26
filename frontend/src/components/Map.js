@@ -1,18 +1,12 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 
 const MODES = ['shortest', 'balanced', 'safest']
 
-function isNight() {
-  const h = new Date().getHours()
-  return h < 6 || h >= 19
-}
-
-function getRouteColor(i) {
-  const colors = ['#3b82f6', '#a855f7', '#22c55e']
-  return colors[i % colors.length]
-}
+function isNight() { const h = new Date().getHours(); return h < 6 || h >= 19 }
+function getRouteColor(i) { return ['#3b82f6', '#a855f7', '#22c55e'][i % 3] }
+function getRouteGlow(i) { return ['rgba(59,130,246,0.15)', 'rgba(168,85,247,0.15)', 'rgba(34,197,94,0.15)'][i % 3] }
 
 function pathsEqual(a, b) {
   if (a.length !== b.length) return false
@@ -36,6 +30,7 @@ function getUniqueRoutes(routes) {
   return result
 }
 
+// === MapClickHandler ===
 function MapClickHandler({ onMapClick }) {
   const map = useMap()
   useMapEvents({
@@ -61,13 +56,73 @@ function MapClickHandler({ onMapClick }) {
   return null
 }
 
+// === Start/End Markers ===
+function StartEndMarkers({ startCoords, endCoords, startName, endName }) {
+  const map = useMap()
+  const markers = useRef([])
+
+  useEffect(() => {
+    markers.current.forEach(m => map.removeLayer(m))
+    markers.current = []
+
+    if (startCoords) {
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="
+          width:20px;height:20px;
+          background:#22c55e;
+          border:3px solid #1e293b;
+          border-radius:50%;
+          box-shadow:0 0 0 4px rgba(34,197,94,0.3), 0 2px 8px rgba(0,0,0,0.4);
+          animation: markerPulse 2s infinite;
+        "></div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      })
+      const m = L.marker([startCoords.lat, startCoords.lng], { icon }).addTo(map)
+      if (startName) m.bindPopup(`<b style="font-size:13px">${startName}</b><br/><span style="font-size:11px;color:#94a3b8">Start</span>`)
+      markers.current.push(m)
+    }
+
+    if (endCoords) {
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="
+          width:20px;height:20px;
+          background: #ef4444;
+          border:3px solid #1e293b;
+          border-radius:50%;
+          box-shadow:0 0 0 4px rgba(239,68,68,0.3), 0 2px 8px rgba(0,0,0,0.4);
+          animation: markerPulse 2s infinite;
+        "></div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      })
+      const m = L.marker([endCoords.lat, endCoords.lng], { icon }).addTo(map)
+      if (endName) m.bindPopup(`<b style="font-size:13px">${endName}</b><br/><span style="font-size:11px;color:#94a3b8">Destination</span>`)
+      markers.current.push(m)
+    }
+
+    return () => { markers.current.forEach(m => map.removeLayer(m)) }
+  }, [startCoords, endCoords, startName, endName, map])
+
+  return null
+}
+
+// === RouteLayer ===
 function RouteLayer({ routes, activeMode, transportMode }) {
   const map = useMap()
   const layersRef = useRef({})
+  const animRef = useRef(null)
 
   useEffect(() => {
-    Object.values(layersRef.current).forEach(l => map.removeLayer(l))
+    Object.values(layersRef.current).forEach(l => {
+      if (l.group) map.removeLayer(l.group)
+      if (l.glow) map.removeLayer(l.glow)
+      if (l.path) map.removeLayer(l.path)
+    })
     layersRef.current = {}
+    if (animRef.current) { clearTimeout(animRef.current); animRef.current = null }
     if (!routes) return
 
     const unique = getUniqueRoutes(routes)
@@ -77,80 +132,133 @@ function RouteLayer({ routes, activeMode, transportMode }) {
     unique.forEach((route, i) => {
       const latlngs = route.path.map(p => [p.lat, p.lon])
       const isActive = route._key === activeMode
+      const color = getRouteColor(i)
+      const weight = isActive ? 6 : 3
+      const opacity = isActive ? 0.95 : 0.4
 
-      const polyline = L.polyline(latlngs, {
-        color: getRouteColor(i),
-        weight: isActive ? 6 : 3,
-        opacity: isActive ? 0.9 : 0.4,
-        dashArray: i === 1 ? '10, 6' : null,
+      // Glow layer
+      const glowPoly = L.polyline(latlngs, {
+        color: color,
+        weight: weight + 8,
+        opacity: 0.12,
+        lineCap: 'round',
+        lineJoin: 'round',
       }).addTo(map)
+      layersRef.current[`${route._key}_glow`] = glowPoly
+
+      // Main path
+      const poly = L.polyline(latlngs, {
+        color,
+        weight,
+        opacity,
+        lineCap: 'round',
+        lineJoin: 'round',
+        dashArray: multiple && i === 1 ? '8, 5' : null,
+      }).addTo(map)
+
+      // Add distance markers along route
+      const totalKm = route.total_distance_km || 0
+      if (totalKm > 1) {
+        const interval = totalKm > 5 ? 2 : 1
+        for (let d = interval; d < totalKm; d += interval) {
+          const frac = d / totalKm
+          const idx = Math.floor(frac * (latlngs.length - 1))
+          if (idx > 0 && idx < latlngs.length - 1) {
+            const p = latlngs[idx]
+            const divIcon = L.divIcon({
+              className: 'distance-marker',
+              html: `${d} km`,
+              iconSize: [0, 0],
+              iconAnchor: [0, 0],
+            })
+            L.marker(p, { icon: divIcon, interactive: false }).addTo(map)
+          }
+        }
+      }
 
       if (route.total_distance_km && route.avg_safety_score) {
         const speed = { car: 20, motorcycle: 25, walk: 5 }[transportMode] || 20
         const time = route.estimated_time_min || Math.round((route.total_distance_km / speed) * 60)
-        const label = multiple ? `Route ${i + 1}` : 'Route'
-        polyline.bindPopup(
-          `<div style="font-size:13px; min-width:180px">
-            <b>${label}</b><br/>
-            Distance: ${route.total_distance_km} km<br/>
-            Time: ~${time} min<br/>
-            Safety: ${route.avg_safety_score}/100
-          </div>`
-        )
+        const label = multiple ? (route._key === 'shortest' ? 'Standard' : route._key === 'safest' ? 'Safest' : 'Balanced') : 'Route'
+        poly.bindPopup(`
+          <div style="font-size:13px;min-width:170px">
+            <b style="color:${color}">${label}</b><br/>
+            <div style="display:flex;justify-content:space-between;margin-top:6px;gap:12px">
+              <span>📏 ${route.total_distance_km} km</span>
+              <span>⏱ ~${time} min</span>
+              <span style="color:${route.avg_safety_score > 75 ? '#22c55e' : route.avg_safety_score > 55 ? '#eab308' : '#ef4444'}">🛡️ ${route.avg_safety_score}/100</span>
+            </div>
+          </div>
+        `)
       }
 
-      layersRef.current[route._key] = polyline
+      layersRef.current[route._key] = { group: poly, glow: glowPoly }
       boundsList.push(...latlngs)
     })
 
     if (boundsList.length > 0) {
-      map.fitBounds(L.latLngBounds(boundsList), { padding: [40, 40] })
+      map.fitBounds(L.latLngBounds(boundsList), { padding: [50, 50], maxZoom: 15 })
     }
 
-    return () => { Object.values(layersRef.current).forEach(l => map.removeLayer(l)) }
-  }, [routes, activeMode, map])
+    return () => {
+      Object.values(layersRef.current).forEach(l => {
+        if (l.group) map.removeLayer(l.group)
+        if (l.glow) map.removeLayer(l.glow)
+      })
+    }
+  }, [routes, activeMode, map, transportMode])
 
   return null
 }
 
+// === POI Layer ===
 const POI_COLORS = { hospital: '#ef4444', police: '#3b82f6', landmark: '#f59e0b', transit: '#8b5cf6' }
 const POI_ICONS = { hospital: '🏥', police: '🚔', landmark: '🏛️', transit: '🚉' }
+const POI_LABELS = { hospital: 'Hospital', police: 'Police Station', landmark: 'Landmark', transit: 'Transit' }
 
-function POILayer({ pois }) {
+function POILayer({ pois, poiFilter }) {
   const map = useMap()
   const layerRef = useRef(null)
 
+  const filtered = useMemo(() => {
+    if (!pois) return []
+    if (!poiFilter) return pois
+    return pois.filter(p => p.type === poiFilter)
+  }, [pois, poiFilter])
+
   useEffect(() => {
     if (layerRef.current) { map.removeLayer(layerRef.current); layerRef.current = null }
-    if (!pois || pois.length === 0) return
+    if (!filtered || filtered.length === 0) return
 
     const group = L.layerGroup()
-    pois.forEach(p => {
+    filtered.forEach(p => {
       const color = POI_COLORS[p.type] || '#94a3b8'
-      const icon = POI_ICONS[p.type] || '📍'
+      const iconEmoji = POI_ICONS[p.type] || '📍'
       const marker = L.marker([p.lat, p.lon], {
         icon: L.divIcon({
           className: '',
           html: `<div style="
-            width:32px;height:32px;
-            background:${color}22;
-            border:2px solid ${color};
-            border-radius:8px;
+            width:34px;height:34px;
+            background:${color}18;
+            border:2px solid ${color}66;
+            border-radius:10px;
             display:flex;align-items:center;justify-content:center;
-            font-size:14px;
-            box-shadow:0 2px 8px ${color}44, 0 1px 3px rgba(0,0,0,0.3);
-            transform:rotateX(5deg);
-            transition:transform 0.2s;
+            font-size:15px;
+            backdrop-filter:blur(4px);
+            box-shadow:0 2px 12px ${color}33, 0 1px 3px rgba(0,0,0,0.3);
             cursor:pointer;
-          ">${icon}</div>`,
-          iconSize: [32, 32],
-          iconAnchor: [16, 16],
+            transition:all 0.2s;
+          " onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'"
+          >${iconEmoji}</div>`,
+          iconSize: [34, 34],
+          iconAnchor: [17, 17],
           popupAnchor: [0, -20],
         })
       }).bindPopup(`
-        <div style="font-size:13px;min-width:140px">
+        <div style="font-size:13px;min-width:160px">
           <b>${p.name}</b><br/>
-          <span style="color:${color};text-transform:capitalize;font-size:11px">${p.type}</span>
+          <span style="color:${color};font-size:11px;text-transform:capitalize">${POI_LABELS[p.type] || p.type}</span>
+          ${p.address ? `<br/><span style="font-size:10px;color:#64748b">${p.address}</span>` : ''}
         </div>
       `)
       group.addLayer(marker)
@@ -159,14 +267,16 @@ function POILayer({ pois }) {
     layerRef.current = group
 
     return () => { if (layerRef.current) map.removeLayer(layerRef.current) }
-  }, [pois, map])
+  }, [filtered, map])
 
   return null
 }
 
+// === Compass Control ===
 function CompassControl() {
   const map = useMap()
   const [angle, setAngle] = useState(0)
+  const [isHovered, setIsHovered] = useState(false)
 
   const rotateMap = useCallback((deg) => {
     const newAngle = ((angle + deg) % 360 + 360) % 360
@@ -176,6 +286,7 @@ function CompassControl() {
     const mapPane = container.querySelector('.leaflet-map-pane')
     if (mapPane) {
       mapPane.style.transformOrigin = '50% 50%'
+      mapPane.style.transition = 'transform 0.4s ease-out'
       mapPane.style.transform = `rotate(${newAngle}deg)`
     }
   }, [angle, map])
@@ -186,49 +297,89 @@ function CompassControl() {
     const container = map.getContainer()
     const mapPane = container.querySelector('.leaflet-map-pane')
     if (mapPane) {
-      mapPane.style.transformOrigin = '50% 50%'
+      mapPane.style.transition = 'transform 0.4s ease-out'
       mapPane.style.transform = 'rotate(0deg)'
     }
   }, [map])
 
   return (
-    <div className="absolute bottom-20 right-4 z-[1000] flex flex-col items-center gap-1">
-      <button
-        onClick={() => rotateMap(90)}
+    <div className="absolute bottom-20 right-4 z-[1000] flex flex-col items-center gap-1.5"
+      onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
+      <button onClick={() => rotateMap(90)}
         onContextMenu={(e) => { e.preventDefault(); rotateMap(-90) }}
         onDoubleClick={(e) => { e.preventDefault(); resetRotation() }}
         title="Click: 90° CW | Right-click: 90° CCW | Double-click: Reset"
-        className="w-12 h-12 rounded-full bg-slate-900/90 backdrop-blur border border-slate-600 hover:border-blue-500 transition-all flex items-center justify-center shadow-lg cursor-pointer select-none"
-      >
-        <svg viewBox="0 0 50 50" className="w-8 h-8" style={{ transform: `rotate(${-angle}deg)` }}>
-          <circle cx="25" cy="25" r="23" fill="none" stroke="#475569" strokeWidth="1.5" />
-          <line x1="25" y1="3" x2="25" y2="47" stroke="#475569" strokeWidth="0.8" />
-          <line x1="3" y1="25" x2="47" y2="25" stroke="#475569" strokeWidth="0.8" />
-          <polygon points="25,4 21,20 25,17 29,20" fill="#ef4444" />
-          <polygon points="25,46 21,30 25,33 29,30" fill="#94a3b8" />
-          <circle cx="25" cy="25" r="3" fill="#1e293b" stroke="#475569" strokeWidth="1" />
+        className={`w-12 h-12 rounded-2xl glass flex items-center justify-center shadow-lg cursor-pointer select-none transition-all ${isHovered ? 'border-blue-500/40' : ''} btn-press`}>
+        <svg viewBox="0 0 50 50" className="w-8 h-8" style={{ transform: `rotate(${-angle}deg)`, transition: 'transform 0.4s ease-out' }}>
+          <circle cx="25" cy="25" r="22" fill="none" stroke="#475569" strokeWidth="1.2" />
+          <line x1="25" y1="4" x2="25" y2="46" stroke="#334155" strokeWidth="0.6" />
+          <line x1="4" y1="25" x2="46" y2="25" stroke="#334155" strokeWidth="0.6" />
+          <polygon points="25,5 21.5,20 25,17 28.5,20" fill="#ef4444" />
+          <polygon points="25,45 21.5,30 25,33 28.5,30" fill="#475569" />
+          <circle cx="25" cy="25" r="3" fill="#0f172a" stroke="#475569" strokeWidth="0.8" />
           <text x="25" y="10" textAnchor="middle" fontSize="6" fill="#ef4444" fontWeight="bold">N</text>
         </svg>
       </button>
       {angle !== 0 && (
-        <button onClick={resetRotation} className="text-[10px] text-slate-400 hover:text-white bg-slate-800/80 rounded px-2 py-0.5 border border-slate-600">
-          Reset
+        <button onClick={resetRotation} className="text-[10px] text-slate-400 hover:text-white glass rounded-lg px-2.5 py-1 transition-all">
+          ↺ Reset
         </button>
       )}
+      <div className="text-[10px] text-slate-600">{angle}°</div>
     </div>
   )
 }
 
+// === POI Filter ===
+function POIFilter({ poiFilter, setPoiFilter }) {
+  const types = [
+    { value: '', label: 'All', color: '#94a3b8' },
+    { value: 'hospital', label: '🏥', color: '#ef4444' },
+    { value: 'police', label: '🚔', color: '#3b82f6' },
+    { value: 'landmark', label: '🏛️', color: '#f59e0b' },
+    { value: 'transit', label: '🚉', color: '#8b5cf6' },
+  ]
+  return (
+    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] flex gap-1 bg-slate-900/80 backdrop-blur-lg rounded-xl border border-slate-700/50 px-2 py-1.5 shadow-2xl">
+      {types.map(t => (
+        <button key={t.value} onClick={() => setPoiFilter(t.value)}
+          className={`px-2.5 py-1.5 rounded-lg text-xs transition-all btn-press ${poiFilter === t.value ? 'bg-slate-700/80 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+          style={poiFilter === t.value ? { borderLeft: `2px solid ${t.color}` } : {}}>
+          {t.label || 'All'}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// === ClickPhaseIndicator ===
+function ClickPhaseIndicator({ clickPhase }) {
+  return (
+    <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[1000] glass rounded-xl px-4 py-2 shadow-2xl animate-fadeIn">
+      <div className="flex items-center gap-2.5 text-xs">
+        <span className={`w-2 h-2 rounded-full ${clickPhase === 'start' ? 'bg-green-500 animate-pulseGlow' : 'bg-green-500/40'}`}></span>
+        <span className={`${clickPhase === 'start' ? 'text-green-400' : 'text-slate-500'}`}>Start</span>
+        <span className="text-slate-600">→</span>
+        <span className={`w-2 h-2 rounded-full ${clickPhase === 'end' ? 'bg-red-500 animate-pulseGlow' : 'bg-red-500/40'}`}></span>
+        <span className={`${clickPhase === 'end' ? 'text-red-400' : 'text-slate-500'}`}>End</span>
+        <span className="text-slate-600 ml-2">Click on map to set</span>
+      </div>
+    </div>
+  )
+}
+
+// === Main MapView ===
 export default function MapView({
   routes, activeMode, transportMode,
   onMapClick, mapDark, onToggleDark,
-  pois,
+  pois, clickPhase, startCoords, endCoords,
+  startName, endName, sidebarOpen,
 }) {
   const defaultCenter = [28.6139, 77.2090]
   const defaultZoom = 12
-
   const darkTile = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
   const lightTile = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+  const [poiFilter, setPoiFilter] = useState('')
 
   return (
     <div className="flex-1 relative">
@@ -236,38 +387,47 @@ export default function MapView({
         center={defaultCenter}
         zoom={defaultZoom}
         style={{ height: '100%', width: '100%' }}
-        zoomControl={false}
+        zoomControl={true}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
           url={mapDark ? darkTile : lightTile}
         />
         <MapClickHandler onMapClick={onMapClick} />
+        <StartEndMarkers startCoords={startCoords} endCoords={endCoords} startName={startName} endName={endName} />
         <RouteLayer routes={routes} activeMode={activeMode} transportMode={transportMode} />
-        <POILayer pois={pois} />
+        <POILayer pois={pois} poiFilter={poiFilter} />
         <CompassControl />
       </MapContainer>
 
+      {/* Top controls */}
       <div className="absolute top-4 left-4 z-[1000] flex gap-2">
-        <button
-          onClick={onToggleDark}
-          className="bg-slate-900/80 backdrop-blur rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800 transition flex items-center gap-2 shadow-lg"
-        >
+        <button onClick={onToggleDark}
+          className="glass rounded-xl px-3.5 py-2.5 text-xs text-slate-300 hover:text-white transition-all btn-press flex items-center gap-2 shadow-lg">
           {mapDark ? '☀️ Light' : '🌙 Dark'}
         </button>
         {isNight() && (
-          <span className="bg-indigo-900/80 backdrop-blur rounded-lg border border-indigo-700 px-3 py-2 text-xs text-indigo-300 flex items-center gap-1.5 shadow-lg">
-            🌙 Night
+          <span className="glass rounded-xl px-3.5 py-2.5 text-xs text-indigo-300 flex items-center gap-1.5 shadow-lg border border-indigo-700/30">
+            🌙 Night Mode Active
           </span>
         )}
       </div>
 
-      <div className="absolute bottom-4 left-4 z-[1000] flex items-center gap-3 bg-slate-900/80 backdrop-blur rounded-lg border border-slate-700 px-3 py-2 text-xs shadow-lg">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500"></span> Route</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Hospital</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400"></span> Police</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500"></span> Landmark</span>
-        <span className="text-slate-500 ml-1">Click map to set start/end</span>
+      {/* POI Filter */}
+      <POIFilter poiFilter={poiFilter} setPoiFilter={setPoiFilter} />
+
+      {/* Click phase indicator */}
+      {!routes && <ClickPhaseIndicator clickPhase={clickPhase} />}
+
+      {/* Legend */}
+      <div className="absolute bottom-4 left-4 z-[1000] glass rounded-xl px-3 py-2.5 text-xs shadow-lg">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-0.5 rounded bg-blue-500"></span> Route</span>
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500 shadow-sm"></span> Hospital</span>
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-400 shadow-sm"></span> Police</span>
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-500 shadow-sm"></span> Landmark</span>
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-purple-500 shadow-sm"></span> Transit</span>
+        </div>
       </div>
     </div>
   )

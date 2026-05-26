@@ -5,10 +5,16 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const api = axios.create({
   baseURL: API_BASE,
   timeout: 120000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
 });
+
+const cache = new Map();
+function cached(key, ttl = 30000) {
+  return {
+    get: () => { const v = cache.get(key); return v && Date.now() - v.ts < ttl ? v.data : null; },
+    set: (data) => { cache.set(key, { data, ts: Date.now() }); }
+  };
+}
 
 export async function getEdges() {
   const res = await api.get('/edges?major=true');
@@ -16,66 +22,37 @@ export async function getEdges() {
 }
 
 export async function getRoute(startLat, startLon, endLat, endLon, mode = 'balanced', transport = 'car') {
-  const res = await api.post('/route', {
-    start_lat: startLat,
-    start_lon: startLon,
-    end_lat: endLat,
-    end_lon: endLon,
-    mode,
-    transport,
-  });
+  const res = await api.post('/route', { start_lat: startLat, start_lon: startLon, end_lat: endLat, end_lon: endLon, mode, transport });
   return res.data;
 }
 
 export async function compareRoutes(startLat, startLon, endLat, endLon, transport = 'car') {
-  const res = await api.post('/compare', {
-    start_lat: startLat,
-    start_lon: startLon,
-    end_lat: endLat,
-    end_lon: endLon,
-    transport,
-  });
+  const key = `compare:${startLat},${startLon},${endLat},${endLon},${transport}`;
+  const c = cached(key, 60000);
+  let data = c.get();
+  if (data) return data;
+  const res = await api.post('/compare', { start_lat: startLat, start_lon: startLon, end_lat: endLat, end_lon: endLon, transport });
+  c.set(res.data);
   return res.data;
 }
 
 export async function evaluateRoute(startLat, startLon, endLat, endLon) {
-  const res = await api.post('/evaluate', {
-    start_lat: startLat,
-    start_lon: startLon,
-    end_lat: endLat,
-    end_lon: endLon,
-  });
+  const res = await api.post('/evaluate', { start_lat: startLat, start_lon: startLon, end_lat: endLat, end_lon: endLon });
   return res.data;
 }
 
 export async function getXAI(startLat, startLon, endLat, endLon, mode = 'balanced', transport = 'car') {
-  const res = await api.post('/xai', {
-    start_lat: startLat,
-    start_lon: startLon,
-    end_lat: endLat,
-    end_lon: endLon,
-    mode,
-    transport,
-  });
+  const res = await api.post('/xai', { start_lat: startLat, start_lon: startLon, end_lat: endLat, end_lon: endLon, mode, transport });
   return res.data;
 }
 
 export async function submitReport(edgeId, userId, reportType) {
-  const res = await api.post('/report', {
-    edge_id: edgeId,
-    user_id: userId,
-    report_type: reportType,
-  });
+  const res = await api.post('/report', { edge_id: edgeId, user_id: userId, report_type: reportType });
   return res.data;
 }
 
 export async function submitIncident(lat, lon, severity, incidentType) {
-  const res = await api.post('/incident', {
-    lat,
-    lon,
-    severity,
-    incident_type: incidentType,
-  });
+  const res = await api.post('/incident', { lat, lon, severity, incident_type: incidentType });
   return res.data;
 }
 
@@ -85,7 +62,12 @@ export async function getSystemReport() {
 }
 
 export async function getPOIs(types = '') {
+  const key = `pois:${types}`;
+  const c = cached(key, 120000);
+  let data = c.get();
+  if (data) return data;
   const res = await api.get('/pois', { params: { types } });
+  c.set(res.data);
   return res.data;
 }
 
