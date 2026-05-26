@@ -129,6 +129,55 @@ async def get_edges(major: bool = False):
     return router.get_all_edges_geojson(major_only=major)
 
 
+DELHI_POIS = [
+    # Hospitals
+    {"name": "AIIMS Delhi", "lat": 28.5670, "lon": 77.2100, "type": "hospital"},
+    {"name": "Safdarjung Hospital", "lat": 28.5620, "lon": 77.2000, "type": "hospital"},
+    {"name": "LNJP Hospital", "lat": 28.6350, "lon": 77.2300, "type": "hospital"},
+    {"name": "GTB Hospital", "lat": 28.7050, "lon": 77.2350, "type": "hospital"},
+    {"name": "RML Hospital", "lat": 28.6300, "lon": 77.2200, "type": "hospital"},
+    {"name": "Holy Family Hospital", "lat": 28.5600, "lon": 77.2600, "type": "hospital"},
+    {"name": "Max Hospital Saket", "lat": 28.5250, "lon": 77.2150, "type": "hospital"},
+    {"name": "Fortis Hospital", "lat": 28.5550, "lon": 77.2650, "type": "hospital"},
+    {"name": "Apollo Hospital", "lat": 28.5450, "lon": 77.2750, "type": "hospital"},
+    # Police Stations
+    {"name": "Connaught Place Police Station", "lat": 28.6320, "lon": 77.2180, "type": "police"},
+    {"name": "Chandni Chowk Police Station", "lat": 28.6550, "lon": 77.2300, "type": "police"},
+    {"name": "New Delhi Police Station", "lat": 28.6150, "lon": 77.2150, "type": "police"},
+    {"name": "Hauz Khas Police Station", "lat": 28.5500, "lon": 77.2050, "type": "police"},
+    {"name": "Karol Bagh Police Station", "lat": 28.6500, "lon": 77.1900, "type": "police"},
+    {"name": "Dwarka Police Station", "lat": 28.5850, "lon": 77.0500, "type": "police"},
+    {"name": "Rohini Police Station", "lat": 28.7350, "lon": 77.1150, "type": "police"},
+    # Landmarks
+    {"name": "Red Fort", "lat": 28.6560, "lon": 77.2410, "type": "landmark"},
+    {"name": "India Gate", "lat": 28.6129, "lon": 77.2295, "type": "landmark"},
+    {"name": "Qutub Minar", "lat": 28.5245, "lon": 77.1850, "type": "landmark"},
+    {"name": "Lotus Temple", "lat": 28.5530, "lon": 77.2580, "type": "landmark"},
+    {"name": "Akshardham Temple", "lat": 28.6120, "lon": 77.2750, "type": "landmark"},
+    {"name": "Jama Masjid", "lat": 28.6510, "lon": 77.2330, "type": "landmark"},
+    {"name": "Humayun's Tomb", "lat": 28.5930, "lon": 77.2480, "type": "landmark"},
+    {"name": "Lodhi Garden", "lat": 28.5900, "lon": 77.2200, "type": "landmark"},
+    {"name": "Parliament House", "lat": 28.6170, "lon": 77.2080, "type": "landmark"},
+    {"name": "Rashtrapati Bhavan", "lat": 28.6140, "lon": 77.2000, "type": "landmark"},
+    {"name": "Supreme Court", "lat": 28.6220, "lon": 77.2400, "type": "landmark"},
+    {"name": "Connaught Place", "lat": 28.6315, "lon": 77.2167, "type": "landmark"},
+    {"name": "Chandni Chowk", "lat": 28.6560, "lon": 77.2300, "type": "landmark"},
+    {"name": "Delhi Junction Railway Station", "lat": 28.6615, "lon": 77.2270, "type": "transit"},
+    {"name": "New Delhi Railway Station", "lat": 28.6420, "lon": 77.2210, "type": "transit"},
+    {"name": "ISBT Kashmere Gate", "lat": 28.6720, "lon": 77.2320, "type": "transit"},
+    {"name": "IGI Airport Terminal 3", "lat": 28.5600, "lon": 77.1200, "type": "transit"},
+]
+
+
+@app.get("/pois")
+async def get_pois(types: str = ""):
+    if not types:
+        return DELHI_POIS
+    type_list = [t.strip().lower() for t in types.split(",")]
+    filtered = [p for p in DELHI_POIS if p["type"] in type_list]
+    return filtered
+
+
 @app.post("/route")
 async def get_route(req: RouteRequest):
     if router is None:

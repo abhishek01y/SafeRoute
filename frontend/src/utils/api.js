@@ -84,6 +84,11 @@ export async function getSystemReport() {
   return res.data;
 }
 
+export async function getPOIs(types = '') {
+  const res = await api.get('/pois', { params: { types } });
+  return res.data;
+}
+
 export async function getHealth() {
   const res = await api.get('/health');
   return res.data;

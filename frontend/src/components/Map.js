@@ -113,6 +113,57 @@ function RouteLayer({ routes, activeMode, transportMode }) {
   return null
 }
 
+const POI_COLORS = { hospital: '#ef4444', police: '#3b82f6', landmark: '#f59e0b', transit: '#8b5cf6' }
+const POI_ICONS = { hospital: '🏥', police: '🚔', landmark: '🏛️', transit: '🚉' }
+
+function POILayer({ pois }) {
+  const map = useMap()
+  const layerRef = useRef(null)
+
+  useEffect(() => {
+    if (layerRef.current) { map.removeLayer(layerRef.current); layerRef.current = null }
+    if (!pois || pois.length === 0) return
+
+    const group = L.layerGroup()
+    pois.forEach(p => {
+      const color = POI_COLORS[p.type] || '#94a3b8'
+      const icon = POI_ICONS[p.type] || '📍'
+      const marker = L.marker([p.lat, p.lon], {
+        icon: L.divIcon({
+          className: '',
+          html: `<div style="
+            width:32px;height:32px;
+            background:${color}22;
+            border:2px solid ${color};
+            border-radius:8px;
+            display:flex;align-items:center;justify-content:center;
+            font-size:14px;
+            box-shadow:0 2px 8px ${color}44, 0 1px 3px rgba(0,0,0,0.3);
+            transform:rotateX(5deg);
+            transition:transform 0.2s;
+            cursor:pointer;
+          ">${icon}</div>`,
+          iconSize: [32, 32],
+          iconAnchor: [16, 16],
+          popupAnchor: [0, -20],
+        })
+      }).bindPopup(`
+        <div style="font-size:13px;min-width:140px">
+          <b>${p.name}</b><br/>
+          <span style="color:${color};text-transform:capitalize;font-size:11px">${p.type}</span>
+        </div>
+      `)
+      group.addLayer(marker)
+    })
+    group.addTo(map)
+    layerRef.current = group
+
+    return () => { if (layerRef.current) map.removeLayer(layerRef.current) }
+  }, [pois, map])
+
+  return null
+}
+
 function CompassControl() {
   const map = useMap()
   const [angle, setAngle] = useState(0)
@@ -140,18 +191,16 @@ function CompassControl() {
     }
   }, [map])
 
-  const needleRotation = angle
-
   return (
     <div className="absolute bottom-20 right-4 z-[1000] flex flex-col items-center gap-1">
       <button
         onClick={() => rotateMap(90)}
         onContextMenu={(e) => { e.preventDefault(); rotateMap(-90) }}
         onDoubleClick={(e) => { e.preventDefault(); resetRotation() }}
-        title="Click to rotate 90° CW | Right-click: 90° CCW | Double-click: Reset North"
+        title="Click: 90° CW | Right-click: 90° CCW | Double-click: Reset"
         className="w-12 h-12 rounded-full bg-slate-900/90 backdrop-blur border border-slate-600 hover:border-blue-500 transition-all flex items-center justify-center shadow-lg cursor-pointer select-none"
       >
-        <svg viewBox="0 0 50 50" className="w-8 h-8" style={{ transform: `rotate(${-needleRotation}deg)` }}>
+        <svg viewBox="0 0 50 50" className="w-8 h-8" style={{ transform: `rotate(${-angle}deg)` }}>
           <circle cx="25" cy="25" r="23" fill="none" stroke="#475569" strokeWidth="1.5" />
           <line x1="25" y1="3" x2="25" y2="47" stroke="#475569" strokeWidth="0.8" />
           <line x1="3" y1="25" x2="47" y2="25" stroke="#475569" strokeWidth="0.8" />
@@ -162,10 +211,7 @@ function CompassControl() {
         </svg>
       </button>
       {angle !== 0 && (
-        <button
-          onClick={resetRotation}
-          className="text-[10px] text-slate-400 hover:text-white bg-slate-800/80 rounded px-2 py-0.5 border border-slate-600"
-        >
+        <button onClick={resetRotation} className="text-[10px] text-slate-400 hover:text-white bg-slate-800/80 rounded px-2 py-0.5 border border-slate-600">
           Reset
         </button>
       )}
@@ -176,6 +222,7 @@ function CompassControl() {
 export default function MapView({
   routes, activeMode, transportMode,
   onMapClick, mapDark, onToggleDark,
+  pois,
 }) {
   const defaultCenter = [28.6139, 77.2090]
   const defaultZoom = 12
@@ -197,6 +244,7 @@ export default function MapView({
         />
         <MapClickHandler onMapClick={onMapClick} />
         <RouteLayer routes={routes} activeMode={activeMode} transportMode={transportMode} />
+        <POILayer pois={pois} />
         <CompassControl />
       </MapContainer>
 
@@ -214,9 +262,12 @@ export default function MapView({
         )}
       </div>
 
-      <div className="absolute bottom-4 left-4 z-[1000] flex items-center gap-2 bg-slate-900/70 backdrop-blur rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-400 shadow-lg">
-        <span className="inline-block w-2 h-2 rounded-full bg-blue-500"></span>
-        <span>Click map to set locations</span>
+      <div className="absolute bottom-4 left-4 z-[1000] flex items-center gap-3 bg-slate-900/80 backdrop-blur rounded-lg border border-slate-700 px-3 py-2 text-xs shadow-lg">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500"></span> Route</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Hospital</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400"></span> Police</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500"></span> Landmark</span>
+        <span className="text-slate-500 ml-1">Click map to set start/end</span>
       </div>
     </div>
   )

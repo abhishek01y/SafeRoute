@@ -1,9 +1,9 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import Sidebar from '../components/Sidebar'
 import XAIPanel from '../components/XAIPanel'
 import RouteInfo from '../components/RouteInfo'
-import { compareRoutes, getXAI } from '../utils/api'
+import { compareRoutes, getXAI, getPOIs } from '../utils/api'
 
 const MapView = dynamic(() => import('../components/Map'), { ssr: false })
 
@@ -18,6 +18,11 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [xaiLoading, setXaiLoading] = useState(false)
   const [clickPhase, setClickPhase] = useState('start')
+  const [pois, setPois] = useState([])
+
+  useEffect(() => {
+    getPOIs().then(setPois).catch(() => {})
+  }, [])
 
   const handleMapClick = useCallback((latlng) => {
     const coords = { lat: latlng.lat, lon: latlng.lng }
@@ -78,6 +83,7 @@ export default function Home() {
             mapDark={mapDark}
             onToggleDark={() => setMapDark(!mapDark)}
             onMapClick={handleMapClick}
+            pois={pois}
           />
 
           {routes && (
