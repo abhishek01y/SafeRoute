@@ -130,14 +130,67 @@ def load_osm_pbf_highways(pbf_path, existing_G, segment_length_m=75):
     return G
 
 
+def load_pickle_graph(pickle_path="data/delhi_graph.pkl.gz"):
+    if not os.path.exists(pickle_path):
+        return None
+    try:
+        import gzip, pickle
+        print(f"[INFO] Loading pre-built graph pickle: {pickle_path}")
+        with gzip.open(pickle_path, 'rb') as f:
+            G = pickle.load(f)
+
+        needs_conversion = False
+        for _, _, d in G.edges(data=True):
+            if 'distance' in d and 'length_km' not in d:
+                needs_conversion = True
+            break
+
+        if needs_conversion:
+            print(f"[INFO] Converting pickle attribute names to expected schema...")
+            mapping = {
+                'distance': 'length_km',
+                'safety': 'safety_score',
+                'highway': 'type',
+            }
+            for u, v, d in G.edges(data=True):
+                for old_k, new_k in mapping.items():
+                    if old_k in d and new_k not in d:
+                        d[new_k] = d.pop(old_k)
+                if 'length_km' in d:
+                    d['length_km'] = d['length_km'] / 1000.0
+                d.setdefault('name', 'Unnamed Road')
+                d.setdefault('lanes', 2)
+                d.setdefault('oneway', 'no')
+                d.setdefault('lit', 'yes')
+                hw_type = d.get('type', 'residential')
+                lighting_map = {'motorway': 90, 'trunk': 85, 'primary': 75, 'secondary': 65, 'tertiary': 60, 'residential': 40, 'service': 35, 'unclassified': 30, 'footway': 50, 'pedestrian': 50}
+                d['lighting_score'] = d.get('lighting_score', lighting_map.get(hw_type, 50))
+                d['poi_density'] = d.get('poi_density', 50)
+                d['footfall'] = d.get('footfall', 40)
+                d['crime_risk'] = d.get('crime_risk', 20)
+                d['ai_sentiment'] = d.get('ai_sentiment', 10)
+                d['crowdsourced_risk'] = d.get('crowdsourced_risk', 5)
+                d['edge_id'] = d.get('edge_id', 0)
+
+        print(f"[INFO] Pickle loaded: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
+        return G
+    except Exception as e:
+        print(f"[WARN] Failed to load pickle: {e}")
+        return None
+
+
 def load_and_segment_delhi_data(
     highway_shp_path="data/delhi_highway.shp",
     poi_shp_path="data/delhi_poi.shp",
     admin_shp_path="data/delhi_administrative.shp",
     segment_length_m=75
 ):
-    G = nx.DiGraph()
+    G = load_pickle_graph()
+    if G is not None:
+        G = _merge_nearby_nodes(G, tolerance=0.0003)
+        return G
 
+    G = nx.DiGraph()
     data_dir = os.path.dirname(highway_shp_path)
 
     if not os.path.exists(highway_shp_path):
