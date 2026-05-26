@@ -130,9 +130,34 @@ def load_osm_pbf_highways(pbf_path, existing_G, segment_length_m=75):
     return G
 
 
+def _download_pickle(pickle_path):
+    """Download pickle from HF Hub if not found locally."""
+    try:
+        import requests
+        url = "https://huggingface.co/abhisheky01/delhi-safe-route-api/resolve/main/data/delhi_graph.pkl.gz"
+        print(f"[INFO] Downloading pickle from {url}...")
+        os.makedirs(os.path.dirname(pickle_path), exist_ok=True)
+        r = requests.get(url, timeout=300, stream=True)
+        if r.status_code == 200:
+            with open(pickle_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            print(f"[INFO] Downloaded pickle to {pickle_path}")
+            return True
+        else:
+            print(f"[WARN] Download failed: {r.status_code}")
+            return False
+    except Exception as e:
+        print(f"[WARN] Download error: {e}")
+        return False
+
+
 def load_pickle_graph(pickle_path="data/delhi_graph.pkl.gz"):
     if not os.path.exists(pickle_path):
-        return None
+        print(f"[INFO] Pickle not found at {pickle_path}, trying download...")
+        if not _download_pickle(pickle_path):
+            return None
     try:
         import gzip, pickle
         print(f"[INFO] Loading pre-built graph pickle: {pickle_path}")
