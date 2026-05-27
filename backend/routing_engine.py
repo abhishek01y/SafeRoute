@@ -67,39 +67,57 @@ def _get_edge_centroid(u, v, data):
     return ((u[0] + v[0]) / 2.0, (u[1] + v[1]) / 2.0)
 
 
+# Base safety by road type (used when stored score lacks variance)
+TYPE_SAFETY_BASE = {
+    'motorway': 88, 'motorway_link': 85,
+    'trunk': 85, 'trunk_link': 82,
+    'primary': 82, 'primary_link': 78,
+    'secondary': 78, 'secondary_link': 74,
+    'tertiary': 75, 'tertiary_link': 72,
+    'residential': 60, 'service': 50,
+    'living_street': 55, 'unclassified': 58,
+    'footway': 45, 'path': 40, 'pedestrian': 70,
+    'cycleway': 60, 'steps': 35,
+}
+
+
 def calculate_edge_cost(u, v, edge_data, lambda_factor=5.0, user_weight=None,
                         transport="car", is_night=False, safety_mode="standard"):
     distance = edge_data.get('length_km', 1.0)
-    safety_score = edge_data.get('safety_score', 100.0)
+    stored_safety = edge_data.get('safety_score', None)
     lighting_score = edge_data.get('lighting_score', 50.0)
     road_type = str(edge_data.get('type', 'residential')).lower() if edge_data.get('type') else 'residential'
+
+    # Dynamic safety: use stored score if varied, otherwise derive from road type
+    if stored_safety is not None and 30 < stored_safety < 100:
+        safety_score = float(stored_safety)
+    else:
+        safety_score = float(TYPE_SAFETY_BASE.get(road_type, 65))
+
+    # Add road-type variance to differentiate paths
+    road_type_variance = TYPE_SAFETY_BASE.get(road_type, 65)
+    safety_score = (safety_score * 0.3) + (road_type_variance * 0.7)
 
     # --- Safety mode modifiers ---
     extra_penalty = 0.0
     w2_scale = 1.0  # crime risk weight multiplier
 
     if safety_mode == "women_safety":
-        # Increase crime risk weight by 1.5x
         w2_scale = 1.5
-        # Hard penalty on dark roads
         if lighting_score < 40:
             safety_score = max(0, safety_score - 25)
-        # Penalize minor residential/service shortcuts — force onto primary
         if any(t in road_type for t in ['residential', 'service', 'living_street', 'unclassified']):
-            extra_penalty += 4.0  # distance-equivalent cost added
-        # Bonus for well-lit primary/trunk roads
+            extra_penalty += 4.0
         if any(t in road_type for t in ['primary', 'trunk', 'motorway']) and lighting_score >= 60:
             safety_score = min(100, safety_score + 10)
 
     elif safety_mode == "domestic_tourist":
         centroid = _get_edge_centroid(u, v, edge_data)
-        # Penalty: edges within 500m of transit scam zones (-20 safety)
         for tlat, tlon in TRANSIT_SCAM_ZONES:
             d_km = compute_haversine_km(centroid[0], centroid[1], tlat, tlon)
             if d_km < 0.5:
                 safety_score = max(0, safety_score - 20)
                 break
-        # Bonus: edges within 200m of metro corridors (+15 safety)
         for mlat, mlon in METRO_STATIONS:
             d_km = compute_haversine_km(centroid[0], centroid[1], mlat, mlon)
             if d_km < 0.2:
@@ -167,9 +185,9 @@ class SafeRouter:
         if routing_mode == "shortest":
             factor = 0.0
         elif routing_mode == "safest":
-            factor = 15.0
+            factor = 200.0
         elif routing_mode == "balanced":
-            factor = 5.0
+            factor = 40.0
         else:
             factor = 5.0
 
