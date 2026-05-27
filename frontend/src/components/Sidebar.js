@@ -7,13 +7,21 @@ const TRANSPORT_MODES = [
   { value: 'walk', label: 'Walk', icon: '🚶', desc: 'Pedestrian' },
 ]
 
+const SAFETY_MODES = [
+  { value: 'standard', label: 'Standard', icon: '🛡️', desc: 'Default routing' },
+  { value: 'women_safety', label: 'Women Safety', icon: '👩', desc: 'Avoid dark & residential' },
+  { value: 'domestic_tourist', label: 'Domestic Tourist', icon: '🧳', desc: 'Avoid scam zones' },
+]
+
 export default function Sidebar({
   startCoords, endCoords, startName, endName,
   setStartCoords, setEndCoords, setStartName, setEndName,
   transportMode, setTransportMode,
+  safetyMode, setSafetyMode,
   onFindRoute, loading,
   onLocSelect, onQuickRoute, quickRoutes,
   recentRoutes, onSwap, onClose,
+  navActive, onStopNav,
 }) {
   const [tab, setTab] = useState('route')
   const [startInput, setStartInput] = useState(startName || '')
@@ -168,6 +176,46 @@ export default function Sidebar({
                 ))}
               </div>
             </div>
+
+            {/* Travel Profile */}
+            <div>
+              <label className="text-xs text-slate-400 mb-2 flex items-center gap-1.5">
+                <span className="text-sm">👤</span> Travel Profile
+              </label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {SAFETY_MODES.map(sm => (
+                  <button key={sm.value} onClick={() => setSafetyMode(sm.value)}
+                    className={`text-center py-2.5 rounded-xl border text-[11px] transition-all btn-press ${
+                      safetyMode === sm.value
+                        ? sm.value === 'women_safety' ? 'border-pink-500/50 bg-pink-500/10 text-pink-300 shadow-lg shadow-pink-500/10'
+                          : sm.value === 'domestic_tourist' ? 'border-amber-500/50 bg-amber-500/10 text-amber-300 shadow-lg shadow-amber-500/10'
+                          : 'border-blue-500/50 bg-blue-500/10 text-blue-300 shadow-lg shadow-blue-500/10'
+                        : 'border-slate-600/30 bg-slate-800/50 text-slate-400 hover:border-slate-500/50 hover:text-slate-300'
+                    }`}>
+                    <div className="text-lg mb-0.5">{sm.icon}</div>
+                    <div className="font-medium leading-tight">{sm.label}</div>
+                    <div className="text-[9px] opacity-60 mt-0.5">{sm.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Navigation Active Banner */}
+            {navActive && (
+              <div className="glass rounded-xl p-3 border border-green-500/30 bg-green-500/5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulseGlow"></span>
+                    <span className="text-xs text-green-300 font-medium">Navigation Active</span>
+                  </div>
+                  <button onClick={onStopNav}
+                    className="text-[10px] text-red-400 hover:text-red-300 bg-red-500/10 px-2.5 py-1 rounded-lg transition-colors">
+                    Stop
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1.5">Dead-man switch active (5 min interval)</p>
+              </div>
+            )}
 
             {/* Find Route */}
             <button onClick={onFindRoute} disabled={!ready || loading}

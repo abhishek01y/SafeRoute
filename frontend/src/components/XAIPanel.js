@@ -1,6 +1,12 @@
 import { useMemo } from 'react'
 
-export default function XAIPanel({ xaiData, loading }) {
+const SAFETY_LABELS = {
+  standard: { label: 'Standard', icon: '🛡️', color: 'text-blue-400' },
+  women_safety: { label: 'Women Safety', icon: '👩', color: 'text-pink-400' },
+  domestic_tourist: { label: 'Domestic Tourist', icon: '🧳', color: 'text-amber-400' },
+}
+
+export default function XAIPanel({ xaiData, loading, safetyMode }) {
   if (!xaiData && !loading) return null
 
   const gain = useMemo(() => {
@@ -25,6 +31,11 @@ export default function XAIPanel({ xaiData, loading }) {
               <span className="text-base">🧠</span>
               <span className="text-xs font-semibold text-white">XAI Analysis</span>
               <span className="text-[10px] text-slate-500 glass rounded-lg px-2 py-0.5">{xaiData.mode} mode</span>
+              {safetyMode && SAFETY_LABELS[safetyMode] && (
+                <span className={`text-[10px] glass rounded-lg px-2 py-0.5 ${SAFETY_LABELS[safetyMode].color}`}>
+                  {SAFETY_LABELS[safetyMode].icon} {SAFETY_LABELS[safetyMode].label}
+                </span>
+              )}
             </div>
 
             {/* Stats */}

@@ -368,12 +368,89 @@ function ClickPhaseIndicator({ clickPhase }) {
   )
 }
 
+// === SOS FAB ===
+function SOSFab() {
+  return (
+    <a href="tel:112"
+      className="absolute bottom-36 right-4 z-[1000] w-14 h-14 rounded-full bg-gradient-to-br from-red-600 to-red-700 flex items-center justify-center shadow-2xl shadow-red-500/40 hover:from-red-500 hover:to-red-600 transition-all btn-press animate-fadeIn"
+      title="Emergency — Call 112">
+      <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+      </svg>
+    </a>
+  )
+}
+
+// === GPSTracker ===
+function GPSTracker({ navActive, latestGpsRef, onVerifyTrajectory, routes, activeMode }) {
+  const map = useMap()
+  const watchIdRef = useRef(null)
+  const markerRef = useRef(null)
+  const pathRef = useRef(null)
+  const lastCheckRef = useRef(0)
+
+  useEffect(() => {
+    if (!navActive) {
+      if (watchIdRef.current) { navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null }
+      if (markerRef.current) { map.removeLayer(markerRef.current); markerRef.current = null }
+      if (pathRef.current) { map.removeLayer(pathRef.current); pathRef.current = null }
+      return
+    }
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords
+        latestGpsRef.current = { lat: latitude, lng: longitude }
+
+        // Update marker
+        if (markerRef.current) map.removeLayer(markerRef.current)
+        const icon = L.divIcon({
+          className: '',
+          html: `<div style="
+            width:14px;height:14px;
+            background:#3b82f6;
+            border:3px solid #1e293b;
+            border-radius:50%;
+            box-shadow:0 0 0 4px rgba(59,130,246,0.3);
+          "></div>`,
+          iconSize: [14, 14],
+          iconAnchor: [7, 7],
+        })
+        markerRef.current = L.marker([latitude, longitude], { icon }).addTo(map)
+        map.setView([latitude, longitude], map.getZoom(), { animate: true })
+
+        // Route deviation check (every 30s)
+        const now = Date.now()
+        if (onVerifyTrajectory && routes && now - lastCheckRef.current > 30000) {
+          lastCheckRef.current = now
+          const activeRoute = routes[activeMode]
+          if (activeRoute?.path) {
+            onVerifyTrajectory(
+              activeRoute.path.map(p => [p.lat, p.lon]),
+              [latitude, longitude],
+            ).catch(() => {})
+          }
+        }
+      },
+      (err) => console.warn('GPS error:', err.message),
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 },
+    )
+
+    return () => {
+      if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current)
+    }
+  }, [navActive, map, latestGpsRef, onVerifyTrajectory, routes, activeMode])
+
+  return null
+}
+
 // === Main MapView ===
 export default function MapView({
   routes, activeMode, transportMode,
   onMapClick, mapDark, onToggleDark,
   pois, clickPhase, startCoords, endCoords,
   startName, endName, sidebarOpen,
+  navActive, latestGpsRef, onVerifyTrajectory,
 }) {
   const defaultCenter = [28.6139, 77.2090]
   const defaultZoom = 12
@@ -398,7 +475,11 @@ export default function MapView({
         <RouteLayer routes={routes} activeMode={activeMode} transportMode={transportMode} />
         <POILayer pois={pois} poiFilter={poiFilter} />
         <CompassControl />
+        <GPSTracker navActive={navActive} latestGpsRef={latestGpsRef} onVerifyTrajectory={onVerifyTrajectory} routes={routes} activeMode={activeMode} />
       </MapContainer>
+
+      {/* SOS FAB */}
+      <SOSFab />
 
       {/* Top controls */}
       <div className="absolute top-4 left-4 z-[1000] flex gap-2">

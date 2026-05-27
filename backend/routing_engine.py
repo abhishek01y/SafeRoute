@@ -1,14 +1,112 @@
 import networkx as nx
 import heapq
 import math
+from shapely.geometry import LineString, Point
+from shapely import wkt
+
+# Interstate transit hubs for Domestic Tourist mode avoidance (lat, lon)
+TRANSIT_SCAM_ZONES = [
+    (28.6615, 77.2270),  # Delhi Junction
+    (28.6420, 77.2210),  # New Delhi Railway Station
+    (28.6720, 77.2320),  # Kashmere Gate ISBT
+    (28.6450, 77.2130),  # Paharganj area
+]
+
+# Verified metro corridor nodes (approximate centerline points)
+METRO_STATIONS = [
+    (28.6315, 77.2167),  # CP
+    (28.6260, 77.2170),  # Barakhamba
+    (28.6340, 77.2200),  # Rajiv Chowk
+    (28.6129, 77.2295),  # India Gate
+    (28.5670, 77.2100),  # AIIMS
+    (28.5280, 77.2150),  # Saket
+    (28.5490, 77.2050),  # Hauz Khas
+    (28.6120, 77.2750),  # Akshardham
+    (28.6560, 77.2300),  # Chandni Chowk
+    (28.6660, 77.2330),  # Kashmere Gate
+    (28.6350, 77.2850),  # Preet Vihar
+    (28.6250, 77.2850),  # IP Extension
+    (28.6480, 77.2950),  # Anand Vihar
+    (28.5650, 77.2430),  # Lajpat Nagar
+    (28.5570, 77.2400),  # Greater Kailash
+    (28.5450, 77.2550),  # Kalkaji
+    (28.5530, 77.2580),  # Lotus Temple
+    (28.5600, 77.1200),  # Airport T3
+    (28.6510, 77.1900),  # Karol Bagh
+    (28.6480, 77.1700),  # Patel Nagar
+    (28.6420, 77.1800),  # Rajendra Nagar
+    (28.7350, 77.1150),  # Rohini
+    (28.7010, 77.1400),  # Pitampura
+    (28.6470, 77.1200),  # Rajouri Garden
+    (28.6210, 77.0900),  # Janakpuri
+    (28.6330, 77.0950),  # Tilak Nagar
+    (28.6670, 77.0950),  # Paschim Vihar
+    (28.7100, 77.1600),  # Shalimar Bagh
+    (28.6900, 77.2100),  # Delhi University
+    (28.5650, 77.2800),  # Jamia
+]
 
 
-def calculate_edge_cost(u, v, edge_data, lambda_factor=5.0, user_weight=None, transport="car", is_night=False):
+def compute_haversine_km(lat1, lon1, lat2, lon2):
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    return 2 * 6371 * math.asin(math.sqrt(a))
+
+
+def _get_edge_centroid(u, v, data):
+    """Compute approximate edge centroid from node coords or WKT geometry."""
+    try:
+        geom_str = data.get('geometry')
+        if geom_str and geom_str.startswith('LINESTRING'):
+            geom = wkt.loads(geom_str)
+            c = geom.centroid
+            return (c.y, c.x)
+    except Exception:
+        pass
+    return ((u[0] + v[0]) / 2.0, (u[1] + v[1]) / 2.0)
+
+
+def calculate_edge_cost(u, v, edge_data, lambda_factor=5.0, user_weight=None,
+                        transport="car", is_night=False, safety_mode="standard"):
     distance = edge_data.get('length_km', 1.0)
     safety_score = edge_data.get('safety_score', 100.0)
     lighting_score = edge_data.get('lighting_score', 50.0)
     road_type = str(edge_data.get('type', 'residential')).lower() if edge_data.get('type') else 'residential'
 
+    # --- Safety mode modifiers ---
+    extra_penalty = 0.0
+    w2_scale = 1.0  # crime risk weight multiplier
+
+    if safety_mode == "women_safety":
+        # Increase crime risk weight by 1.5x
+        w2_scale = 1.5
+        # Hard penalty on dark roads
+        if lighting_score < 40:
+            safety_score = max(0, safety_score - 25)
+        # Penalize minor residential/service shortcuts — force onto primary
+        if any(t in road_type for t in ['residential', 'service', 'living_street', 'unclassified']):
+            extra_penalty += 4.0  # distance-equivalent cost added
+        # Bonus for well-lit primary/trunk roads
+        if any(t in road_type for t in ['primary', 'trunk', 'motorway']) and lighting_score >= 60:
+            safety_score = min(100, safety_score + 10)
+
+    elif safety_mode == "domestic_tourist":
+        centroid = _get_edge_centroid(u, v, edge_data)
+        # Penalty: edges within 500m of transit scam zones (-20 safety)
+        for tlat, tlon in TRANSIT_SCAM_ZONES:
+            d_km = compute_haversine_km(centroid[0], centroid[1], tlat, tlon)
+            if d_km < 0.5:
+                safety_score = max(0, safety_score - 20)
+                break
+        # Bonus: edges within 200m of metro corridors (+15 safety)
+        for mlat, mlon in METRO_STATIONS:
+            d_km = compute_haversine_km(centroid[0], centroid[1], mlat, mlon)
+            if d_km < 0.2:
+                safety_score = min(100, safety_score + 15)
+                break
+
+    # --- Night mode ---
     if is_night:
         if lighting_score >= 60:
             safety_score = min(100, safety_score + 15)
@@ -17,11 +115,14 @@ def calculate_edge_cost(u, v, edge_data, lambda_factor=5.0, user_weight=None, tr
         else:
             safety_score = max(0, safety_score - 5)
 
+    # --- User preference weight ---
     if user_weight is not None:
         safety_score = safety_score * (1 - user_weight) + 100 * user_weight
 
+    # --- Risk penalty indexed by safety deficit ---
     risk_penalty = lambda_factor * (100.0 - safety_score) * 0.01
 
+    # --- Transport time multiplier ---
     time_multiplier = 1.0
     if transport == "walk":
         time_multiplier = 12.0
@@ -41,7 +142,8 @@ def calculate_edge_cost(u, v, edge_data, lambda_factor=5.0, user_weight=None, tr
         elif 'motorway' in road_type or 'trunk' in road_type:
             time_multiplier = 0.8
 
-    cost = (distance * time_multiplier) + risk_penalty
+    # --- Composite cost ---
+    cost = (distance * time_multiplier) + risk_penalty + extra_penalty
     return cost
 
 
@@ -56,10 +158,12 @@ class SafeRouter:
         if not components:
             return set()
         giant = max(components, key=len)
-        print(f"[INFO] Giant component: {len(giant)}/{self.G.number_of_nodes()} nodes ({len(giant)/max(1,self.G.number_of_nodes())*100:.1f}%)")
+        print(f"[INFO] Giant component: {len(giant)}/{self.G.number_of_nodes()} nodes "
+              f"({len(giant)/max(1,self.G.number_of_nodes())*100:.1f}%)")
         return giant
 
-    def get_safest_route(self, start_node, end_node, routing_mode="balanced", user_weight=None, transport="car", is_night=False):
+    def get_safest_route(self, start_node, end_node, routing_mode="balanced",
+                         user_weight=None, transport="car", is_night=False, safety_mode="standard"):
         if routing_mode == "shortest":
             factor = 0.0
         elif routing_mode == "safest":
@@ -80,7 +184,8 @@ class SafeRouter:
                     lambda_factor=factor,
                     user_weight=user_weight,
                     transport=transport,
-                    is_night=is_night
+                    is_night=is_night,
+                    safety_mode=safety_mode
                 )
             )
 
@@ -110,7 +215,8 @@ class SafeRouter:
                 'risk_exposure': round(risk_exposure, 1),
                 'num_edges': len(path_edges),
                 'routing_mode': routing_mode,
-                'lambda_factor': factor
+                'lambda_factor': factor,
+                'safety_mode': safety_mode,
             }
 
         except (nx.NodeNotFound, nx.NetworkXNoPath) as e:
@@ -122,42 +228,36 @@ class SafeRouter:
                 'avg_safety_score': 0,
                 'risk_exposure': 0,
                 'num_edges': 0,
-                'routing_mode': routing_mode
+                'routing_mode': routing_mode,
+                'safety_mode': safety_mode,
             }
 
-    def compare_routes(self, start_node, end_node, user_weight=None, transport="car", is_night=False):
-        shortest = self.get_safest_route(start_node, end_node, "shortest", user_weight, transport, is_night)
-        balanced = self.get_safest_route(start_node, end_node, "balanced", user_weight, transport, is_night)
-        safest = self.get_safest_route(start_node, end_node, "safest", user_weight, transport, is_night)
-
-        return {
-            'shortest': shortest,
-            'balanced': balanced,
-            'safest': safest
-        }
+    def compare_routes(self, start_node, end_node, user_weight=None,
+                       transport="car", is_night=False, safety_mode="standard"):
+        shortest = self.get_safest_route(start_node, end_node, "shortest",
+                                         user_weight, transport, is_night, safety_mode)
+        balanced = self.get_safest_route(start_node, end_node, "balanced",
+                                         user_weight, transport, is_night, safety_mode)
+        safest = self.get_safest_route(start_node, end_node, "safest",
+                                       user_weight, transport, is_night, safety_mode)
+        return {'shortest': shortest, 'balanced': balanced, 'safest': safest}
 
     def evaluate_route_comparison(self, start_node, end_node):
         shortest = self.get_safest_route(start_node, end_node, "shortest")
         safest = self.get_safest_route(start_node, end_node, "safest")
-
         if 'error' in shortest or 'error' in safest:
             return {'error': 'Could not compute one or both routes'}
-
         s_path = shortest['path']
         safe_path = safest['path']
-
         shortest_risk = 0
         for u, v in zip(s_path[:-1], s_path[1:]):
             if self.G.has_edge(u, v):
                 shortest_risk += 100 - self.G[u][v].get('safety_score', 70)
-
         safest_risk = 0
         for u, v in zip(safe_path[:-1], safe_path[1:]):
             if self.G.has_edge(u, v):
                 safest_risk += 100 - self.G[u][v].get('safety_score', 70)
-
         risk_reduction_pct = ((shortest_risk - safest_risk) / (shortest_risk + 1e-6)) * 100
-
         return {
             'shortest_distance_km': shortest['total_distance_km'],
             'safest_distance_km': safest['total_distance_km'],
@@ -170,16 +270,13 @@ class SafeRouter:
     def find_nearest_node(self, lat, lon):
         min_dist = float('inf')
         nearest = None
-
         nodes_to_search = self.giant_component if self.giant_component else self.G.nodes()
-
         for node in nodes_to_search:
             node_lat, node_lon = node
-            dist = math.sqrt((lat - node_lat)**2 + (lon - node_lon)**2)
+            dist = math.sqrt((lat - node_lat) ** 2 + (lon - node_lon) ** 2)
             if dist < min_dist:
                 min_dist = dist
                 nearest = node
-
         return nearest
 
     def _build_edge_feature(self, u, v, data):
@@ -187,8 +284,8 @@ class SafeRouter:
             return None
         try:
             coords_pairs = []
-            wkt = data['geometry']
-            wkt_clean = wkt.replace('LINESTRING (', '').replace(')', '').replace('(', '')
+            wkt_str = data['geometry']
+            wkt_clean = wkt_str.replace('LINESTRING (', '').replace(')', '').replace('(', '')
             parts = wkt_clean.split(',')
             for part in parts:
                 part = part.strip()
@@ -229,12 +326,9 @@ class SafeRouter:
             feat = self._build_edge_feature(u, v, data)
             if feat:
                 features.append(feat)
-        return {
-            'type': 'FeatureCollection',
-            'features': features
-        }
+        return {'type': 'FeatureCollection', 'features': features}
 
     def _heuristic(self, a, b):
         lat1, lon1 = a
         lat2, lon2 = b
-        return math.sqrt((lat1 - lat2)**2 + (lon1 - lon2)**2) * 111.0
+        return math.sqrt((lat1 - lat2) ** 2 + (lon1 - lon2) ** 2) * 111.0
