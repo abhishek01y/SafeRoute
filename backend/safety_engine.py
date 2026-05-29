@@ -6,26 +6,27 @@ import random
 
 class SafetyScoreEngine:
     def __init__(self):
-        # Recalibrated weights: crime & sentiment amplified, static components reduced
-        self.w1 = 0.08   # POI Density weight (reduced)
-        self.w2 = 0.55   # Crime Risk weight (nearly doubled from 0.30)
-        self.w3 = 0.18   # Lighting weight
-        self.w4 = 0.08   # Footfall weight (reduced)
-        self.w5 = 0.25   # AI Sentiment weight (nearly doubled from 0.15)
-        self.w6 = 0.06   # Crowdsourced weight
+        # All weights sum to 1.0 for a raw range of 0-100
+        # Crime, AI sentiment, and crowdsource risk are INVERTED so that
+        # low crime/sentiment contributes HIGH to the score.
+        self.w1 = 0.15   # POI Density
+        self.w2 = 0.20   # (100 - Crime Risk) — inverted
+        self.w3 = 0.25   # Lighting — most important
+        self.w4 = 0.15   # Footfall
+        self.w5 = 0.15   # (100 - AI Sentiment) — inverted
+        self.w6 = 0.10   # (100 - Crowdsourced Risk) — inverted
 
         self.recent_incidents = []
         self.gdelt_cache = {}
         self.user_reports = {}
 
     @staticmethod
-    def _sigmoid_widen(score, midpoint=50, steepness=0.07):
+    def _sigmoid_widen(score, midpoint=50):
         """Non-linear widening: pushes scores away from the midpoint.
-        A score of 50 stays 50, but 30→~18, 70→~82, 80→~93."""
-        import math
+        Factor = 1 + 0.04*|d|. A score of 50 stays 50, 30 -> ~22, 70 -> ~78."""
         deviation = score - midpoint
-        stretch = 1.0 + 0.9 * (2.0 / (1.0 + math.exp(-steepness * deviation)) - 1.0)
-        stretched = midpoint + deviation * stretch
+        factor = 1.0 + 0.04 * abs(deviation)
+        stretched = midpoint + deviation * factor
         return max(5.0, min(95.0, stretched))
 
     def compute_safety_score(self, edge_data):
@@ -36,13 +37,15 @@ class SafetyScoreEngine:
         S = edge_data.get('ai_sentiment', 10.0)
         U = edge_data.get('crowdsourced_risk', 5.0)
 
+        # All-positive formula: invert crime, sentiment, crowdsource so that
+        # low crime → high contribution. Raw range = 0-100, centered ~50.
         score = (
             self.w1 * P
-            - self.w2 * C
+            + self.w2 * (100.0 - C)
             + self.w3 * L
             + self.w4 * F
-            - self.w5 * S
-            + self.w6 * U
+            + self.w5 * (100.0 - S)
+            + self.w6 * (100.0 - U)
         )
 
         # Apply non-linear widening to push scores toward extremes

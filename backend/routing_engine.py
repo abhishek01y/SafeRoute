@@ -89,13 +89,14 @@ TYPE_SAFETY_BASE = {
 }
 
 
-def _sigmoid_stretch(score, midpoint=50, steepness=0.06):
+def _sigmoid_stretch(score, midpoint=50):
     """Non-linear stretch to widen safety score distribution.
-    Scores near midpoint migrate toward extremes; scores at edges stay.
-    Result is clipped to [10, 98]."""
+    Amplifies deviation from midpoint with quadratic factor.
+    A score of 40 -> ~36, 60 -> ~64, 30 -> ~22, 70 -> ~78, 20 -> ~10.
+    Clamped to [10, 98]."""
     deviation = score - midpoint
-    stretch = 1.0 + 0.8 * (2.0 / (1.0 + math.exp(-steepness * deviation)) - 1.0)
-    stretched = midpoint + deviation * stretch
+    factor = 1.0 + 0.04 * abs(deviation)
+    stretched = midpoint + deviation * factor
     return max(10.0, min(98.0, stretched))
 
 
