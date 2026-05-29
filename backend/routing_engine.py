@@ -1,8 +1,16 @@
 import networkx as nx
 import heapq
 import math
+import numpy as np
 from shapely.geometry import LineString, Point
 from shapely import wkt
+
+# KD-Tree for O(log N) node lookup
+try:
+    from scipy.spatial import KDTree
+    _HAS_SCIPY = True
+except ImportError:
+    _HAS_SCIPY = False
 
 # Interstate transit hubs for Domestic Tourist mode avoidance (lat, lon)
 TRANSIT_SCAM_ZONES = [
@@ -67,18 +75,28 @@ def _get_edge_centroid(u, v, data):
     return ((u[0] + v[0]) / 2.0, (u[1] + v[1]) / 2.0)
 
 
-# Base safety by road type (used when stored score lacks variance)
+# Base safety by road type — widened spread for better differentiation
 TYPE_SAFETY_BASE = {
-    'motorway': 88, 'motorway_link': 85,
-    'trunk': 85, 'trunk_link': 82,
-    'primary': 82, 'primary_link': 78,
-    'secondary': 78, 'secondary_link': 74,
-    'tertiary': 75, 'tertiary_link': 72,
-    'residential': 60, 'service': 50,
-    'living_street': 55, 'unclassified': 58,
-    'footway': 45, 'path': 40, 'pedestrian': 70,
-    'cycleway': 60, 'steps': 35,
+    'motorway': 95, 'motorway_link': 92,
+    'trunk': 92, 'trunk_link': 88,
+    'primary': 88, 'primary_link': 84,
+    'secondary': 82, 'secondary_link': 76,
+    'tertiary': 75, 'tertiary_link': 68,
+    'residential': 48, 'service': 35,
+    'living_street': 42, 'unclassified': 40,
+    'footway': 30, 'path': 20, 'pedestrian': 60,
+    'cycleway': 55, 'steps': 25,
 }
+
+
+def _sigmoid_stretch(score, midpoint=50, steepness=0.06):
+    """Non-linear stretch to widen safety score distribution.
+    Scores near midpoint migrate toward extremes; scores at edges stay.
+    Result is clipped to [10, 98]."""
+    deviation = score - midpoint
+    stretch = 1.0 + 0.8 * (2.0 / (1.0 + math.exp(-steepness * deviation)) - 1.0)
+    stretched = midpoint + deviation * stretch
+    return max(10.0, min(98.0, stretched))
 
 
 def calculate_edge_cost(u, v, edge_data, lambda_factor=5.0, user_weight=None,
@@ -86,52 +104,60 @@ def calculate_edge_cost(u, v, edge_data, lambda_factor=5.0, user_weight=None,
     distance = edge_data.get('length_km', 1.0)
     stored_safety = edge_data.get('safety_score', None)
     lighting_score = edge_data.get('lighting_score', 50.0)
+    crime_risk = edge_data.get('crime_risk', 20.0)
+    ai_sentiment = edge_data.get('ai_sentiment', 10.0)
     road_type = str(edge_data.get('type', 'residential')).lower() if edge_data.get('type') else 'residential'
 
     # Dynamic safety: use stored score if varied, otherwise derive from road type
-    if stored_safety is not None and 30 < stored_safety < 100:
+    if stored_safety is not None and stored_safety >= 10:
         safety_score = float(stored_safety)
     else:
-        safety_score = float(TYPE_SAFETY_BASE.get(road_type, 65))
+        safety_score = float(TYPE_SAFETY_BASE.get(road_type, 50))
 
     # Add road-type variance to differentiate paths
-    road_type_variance = TYPE_SAFETY_BASE.get(road_type, 65)
+    road_type_variance = TYPE_SAFETY_BASE.get(road_type, 50)
     safety_score = (safety_score * 0.3) + (road_type_variance * 0.7)
+
+    # Non-linear sigmoid stretch to widen distribution
+    safety_score = _sigmoid_stretch(safety_score)
 
     # --- Safety mode modifiers ---
     extra_penalty = 0.0
     w2_scale = 1.0  # crime risk weight multiplier
 
     if safety_mode == "women_safety":
-        w2_scale = 1.5
+        w2_scale = 2.0
+        # Heavy penalty on dark, narrow roads
         if lighting_score < 40:
-            safety_score = max(0, safety_score - 25)
-        if any(t in road_type for t in ['residential', 'service', 'living_street', 'unclassified']):
-            extra_penalty += 4.0
+            safety_score = max(0, safety_score - 30)
+        if any(t in road_type for t in ['residential', 'service', 'living_street', 'unclassified', 'path', 'footway']):
+            extra_penalty += 8.0
         if any(t in road_type for t in ['primary', 'trunk', 'motorway']) and lighting_score >= 60:
-            safety_score = min(100, safety_score + 10)
+            safety_score = min(100, safety_score + 12)
+        # Amplify crime risk penalty
+        extra_penalty += w2_scale * (crime_risk / 100.0) * 5.0
 
     elif safety_mode == "domestic_tourist":
         centroid = _get_edge_centroid(u, v, edge_data)
         for tlat, tlon in TRANSIT_SCAM_ZONES:
             d_km = compute_haversine_km(centroid[0], centroid[1], tlat, tlon)
             if d_km < 0.5:
-                safety_score = max(0, safety_score - 20)
+                safety_score = max(0, safety_score - 30)
                 break
         for mlat, mlon in METRO_STATIONS:
             d_km = compute_haversine_km(centroid[0], centroid[1], mlat, mlon)
             if d_km < 0.2:
-                safety_score = min(100, safety_score + 15)
+                safety_score = min(100, safety_score + 20)
                 break
 
     # --- Night mode ---
     if is_night:
         if lighting_score >= 60:
-            safety_score = min(100, safety_score + 15)
+            safety_score = min(100, safety_score + 12)
         elif lighting_score <= 30:
-            safety_score = max(0, safety_score - 15)
+            safety_score = max(0, safety_score - 25)
         else:
-            safety_score = max(0, safety_score - 5)
+            safety_score = max(0, safety_score - 10)
 
     # --- User preference weight ---
     if user_weight is not None:
@@ -169,6 +195,9 @@ class SafeRouter:
     def __init__(self, graph):
         self.G = graph
         self.giant_component = self._compute_giant_component()
+        self._kdtree = None
+        self._node_list = None
+        self._build_kdtree()
 
     def _compute_giant_component(self):
         undirected = self.G.to_undirected()
@@ -285,7 +314,27 @@ class SafeRouter:
             'distance_penalty_km': round(safest['total_distance_km'] - shortest['total_distance_km'], 2),
         }
 
+    def _build_kdtree(self):
+        """Build a KD-Tree from all nodes for O(log N) nearest-node lookup.
+        Uses scaled coordinates to compensate for longitude distortion at Delhi's latitude."""
+        nodes_to_search = list(self.giant_component if self.giant_component else self.G.nodes())
+        if not nodes_to_search:
+            self._kdtree = None
+            self._node_list = []
+            return
+        self._node_list = nodes_to_search
+        # Projection-aware scaling: cos(avg_lat) ≈ cos(28.65°) ≈ 0.877
+        avg_lat = sum(n[0] for n in nodes_to_search) / len(nodes_to_search)
+        self._lon_scale = math.cos(math.radians(avg_lat))
+        coords = np.array([(n[0], n[1] * self._lon_scale) for n in nodes_to_search])
+        self._kdtree = KDTree(coords)
+
     def find_nearest_node(self, lat, lon):
+        if self._kdtree is not None and self._node_list:
+            scaled_query = np.array([[lat, lon * self._lon_scale]])
+            dist, idx = self._kdtree.query(scaled_query, k=1)
+            return self._node_list[idx[0]]
+        # Fallback: brute-force O(N) if KD-Tree unavailable
         min_dist = float('inf')
         nearest = None
         nodes_to_search = self.giant_component if self.giant_component else self.G.nodes()

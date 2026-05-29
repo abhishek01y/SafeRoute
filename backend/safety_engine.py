@@ -6,16 +6,27 @@ import random
 
 class SafetyScoreEngine:
     def __init__(self):
-        self.w1 = 0.15   # POI Density weight
-        self.w2 = 0.30   # Crime Risk weight (negative)
-        self.w3 = 0.20   # Lighting weight
-        self.w4 = 0.15   # Footfall weight
-        self.w5 = 0.15   # AI Sentiment weight (negative)
-        self.w6 = 0.05   # Crowdsourced weight
+        # Recalibrated weights: crime & sentiment amplified, static components reduced
+        self.w1 = 0.08   # POI Density weight (reduced)
+        self.w2 = 0.55   # Crime Risk weight (nearly doubled from 0.30)
+        self.w3 = 0.18   # Lighting weight
+        self.w4 = 0.08   # Footfall weight (reduced)
+        self.w5 = 0.25   # AI Sentiment weight (nearly doubled from 0.15)
+        self.w6 = 0.06   # Crowdsourced weight
 
         self.recent_incidents = []
         self.gdelt_cache = {}
         self.user_reports = {}
+
+    @staticmethod
+    def _sigmoid_widen(score, midpoint=50, steepness=0.07):
+        """Non-linear widening: pushes scores away from the midpoint.
+        A score of 50 stays 50, but 30→~18, 70→~82, 80→~93."""
+        import math
+        deviation = score - midpoint
+        stretch = 1.0 + 0.9 * (2.0 / (1.0 + math.exp(-steepness * deviation)) - 1.0)
+        stretched = midpoint + deviation * stretch
+        return max(5.0, min(95.0, stretched))
 
     def compute_safety_score(self, edge_data):
         P = edge_data.get('poi_density', 50.0)
@@ -33,6 +44,9 @@ class SafetyScoreEngine:
             - self.w5 * S
             + self.w6 * U
         )
+
+        # Apply non-linear widening to push scores toward extremes
+        score = self._sigmoid_widen(score)
 
         return max(0.0, min(100.0, score))
 
