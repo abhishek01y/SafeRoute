@@ -114,3 +114,24 @@ export function calcTime(distKm, transport) {
   const speed = { car: 20, motorcycle: 25, walk: 5 }[transport] || 20;
   return distKm ? Math.round((distKm / speed) * 60) : null;
 }
+
+export function bearing(p1, p2) {
+  const dLon = ((p2.lon || p2.lng || 0) - (p1.lon || p1.lng || 0)) * Math.PI / 180;
+  const lat1 = (p1.lat || 0) * Math.PI / 180;
+  const lat2 = (p2.lat || 0) * Math.PI / 180;
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  return Math.atan2(y, x) * 180 / Math.PI;
+}
+
+export function computeTurns(path, threshold = 30) {
+  if (!path || path.length < 3) return 0;
+  let turns = 0;
+  for (let i = 2; i < path.length; i++) {
+    const b1 = bearing(path[i - 2], path[i - 1]);
+    const b2 = bearing(path[i - 1], path[i]);
+    const diff = Math.abs(b1 - b2);
+    if (diff > threshold && diff < 330) turns++;
+  }
+  return turns;
+}

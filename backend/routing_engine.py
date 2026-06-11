@@ -100,6 +100,55 @@ def _sigmoid_stretch(score, midpoint=50):
     return max(10.0, min(98.0, stretched))
 
 
+def _compute_effective_safety(u, v, edge_data, safety_mode="standard", is_night=False):
+    """Compute the effective runtime safety score for reporting,
+    matching what A* uses in calculate_edge_cost (without the distance cost)."""
+    stored_safety = edge_data.get('safety_score', None)
+    lighting_score = edge_data.get('lighting_score', 50.0)
+    crime_risk = edge_data.get('crime_risk', 20.0)
+    road_type = str(edge_data.get('type', 'residential')).lower() if edge_data.get('type') else 'residential'
+
+    if stored_safety is not None and stored_safety >= 10:
+        score = float(stored_safety)
+    else:
+        score = float(TYPE_SAFETY_BASE.get(road_type, 50))
+
+    road_type_variance = TYPE_SAFETY_BASE.get(road_type, 50)
+    score = (score * 0.3) + (road_type_variance * 0.7)
+
+    score = _sigmoid_stretch(score)
+
+    if safety_mode == "women_safety":
+        if lighting_score < 40:
+            score = max(0, score - 30)
+        if any(t in road_type for t in ['residential', 'service', 'living_street', 'unclassified', 'path', 'footway']):
+            score = max(0, score - 8)
+        if any(t in road_type for t in ['primary', 'trunk', 'motorway']) and lighting_score >= 60:
+            score = min(100, score + 12)
+    elif safety_mode == "domestic_tourist":
+        centroid = _get_edge_centroid(u, v, edge_data)
+        for tlat, tlon in TRANSIT_SCAM_ZONES:
+            d = compute_haversine_km(centroid[0], centroid[1], tlat, tlon)
+            if d < 0.5:
+                score = max(0, score - 30)
+                break
+        for mlat, mlon in METRO_STATIONS:
+            d = compute_haversine_km(centroid[0], centroid[1], mlat, mlon)
+            if d < 0.2:
+                score = min(100, score + 20)
+                break
+
+    if is_night:
+        if lighting_score >= 60:
+            score = min(100, score + 12)
+        elif lighting_score <= 30:
+            score = max(0, score - 25)
+        else:
+            score = max(0, score - 10)
+
+    return max(0.0, min(100.0, score))
+
+
 def calculate_edge_cost(u, v, edge_data, lambda_factor=5.0, user_weight=None,
                         transport="car", is_night=False, safety_mode="standard"):
     distance = edge_data.get('length_km', 1.0)
@@ -243,15 +292,20 @@ class SafeRouter:
             for u, v in zip(path[:-1], path[1:]):
                 if self.G.has_edge(u, v):
                     edge_data = self.G[u][v]
+                    # Compute effective safety score the same way A* does
+                    effective_safety = _compute_effective_safety(
+                        u, v, edge_data,
+                        safety_mode=safety_mode, is_night=is_night
+                    )
                     path_edges.append({
                         'from': u,
                         'to': v,
                         'name': edge_data.get('name', 'Unknown'),
                         'length_km': edge_data.get('length_km', 0),
-                        'safety_score': edge_data.get('safety_score', 70),
+                        'safety_score': round(effective_safety, 1),
                     })
                     total_distance += edge_data.get('length_km', 0)
-                    total_risk += 100 - edge_data.get('safety_score', 70)
+                    total_risk += 100 - effective_safety
 
             risk_exposure = total_risk / max(1, len(path_edges))
 

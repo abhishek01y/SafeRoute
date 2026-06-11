@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import Sidebar from '../components/Sidebar'
-import XAIPanel from '../components/XAIPanel'
-import RouteInfo from '../components/RouteInfo'
+import RightPanel from '../components/RightPanel'
+import BottomSummary from '../components/BottomSummary'
 import SafetyModal from '../components/SafetyModal'
 import { compareRoutes, getXAI, getPOIs, startNavSession, triggerDeadman, verifyTrajectory } from '../utils/api'
 import { QUICK_ROUTES } from '../utils/locations'
@@ -18,7 +18,7 @@ export default function Home() {
   const [endName, setEndName] = useState('')
   const [transportMode, setTransportMode] = useState('car')
   const [safetyMode, setSafetyMode] = useState('standard')
-  const [activeMode, setActiveMode] = useState('balanced')
+  const [activeMode, setActiveMode] = useState('safest')
   const [routes, setRoutes] = useState(null)
   const [xaiData, setXaiData] = useState(null)
   const [mapDark, setMapDark] = useState(true)
@@ -26,7 +26,6 @@ export default function Home() {
   const [xaiLoading, setXaiLoading] = useState(false)
   const [clickPhase, setClickPhase] = useState('start')
   const [pois, setPois] = useState([])
-  const [poiFilter, setPoiFilter] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [recentRoutes, setRecentRoutes] = useState([])
   const [mapReady, setMapReady] = useState(false)
@@ -174,71 +173,63 @@ export default function Home() {
   }, [startCoords, endCoords, startName, endName])
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950">
-      {/* Mobile sidebar toggle */}
-      <button onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="lg:hidden fixed top-3 left-3 z-[2000] w-10 h-10 rounded-xl glass flex items-center justify-center text-slate-300 hover:text-white">
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={sidebarOpen ? 'M6 18L18 6M6 6l12 12' : 'M4 6h16M4 12h16M4 18h16'} />
-        </svg>
-      </button>
-
-      <div className="flex flex-1 overflow-hidden">
-        <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out fixed lg:relative z-[1001] lg:z-auto h-full`}>
-          <Sidebar
-            startCoords={startCoords} endCoords={endCoords}
-            startName={startName} endName={endName}
-            setStartCoords={setStartCoords} setEndCoords={setEndCoords}
-            setStartName={setStartName} setEndName={setEndName}
-            transportMode={transportMode} setTransportMode={setTransportMode}
-            safetyMode={safetyMode} setSafetyMode={setSafetyMode}
-            onFindRoute={handleFindRoute} loading={loading}
-            onLocSelect={handleLocSelect} onQuickRoute={handleQuickRoute}
-            quickRoutes={QUICK_ROUTES} recentRoutes={recentRoutes}
-            onSwap={handleSwap} onClose={() => setSidebarOpen(false)}
-            navActive={navActive} onStopNav={stopDeadmanTimer}
-          />
+    <div className="relative w-screen h-screen overflow-hidden bg-[#0a0f19]">
+      {/* Full-screen map */}
+      {!mapReady && (
+        <div className="absolute inset-0 flex items-center justify-center bg-[#0a0f19] z-50">
+          <div className="text-center">
+            <div className="w-10 h-10 border-4 border-[#00ff88]/20 border-t-[#00ff88] rounded-full animate-spin mx-auto mb-3"></div>
+            <p className="text-slate-500 text-xs">Loading map...</p>
+          </div>
         </div>
+      )}
 
-        {sidebarOpen && (
-          <div onClick={() => setSidebarOpen(false)} className="lg:hidden fixed inset-0 bg-black/50 z-[1000]" />
-        )}
+      <MapView
+        routes={routes} activeMode={activeMode} transportMode={transportMode}
+        mapDark={mapDark} onToggleDark={() => setMapDark(!mapDark)}
+        onMapClick={handleMapClick} pois={pois} poiFilter={''}
+        clickPhase={clickPhase} startCoords={startCoords} endCoords={endCoords}
+        startName={startName} endName={endName} sidebarOpen={sidebarOpen}
+        navActive={navActive} latestGpsRef={latestGpsRef}
+        onVerifyTrajectory={async (path, gps) => {
+          try { return await verifyTrajectory(path, gps) } catch { return null }
+        }}
+      />
 
-        <div className="flex-1 flex flex-col relative">
-          {!mapReady && (
-            <div className="absolute inset-0 flex items-center justify-center bg-slate-900 z-10">
-              <div className="text-center">
-                <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-slate-400 text-sm">Loading map...</p>
-              </div>
-            </div>
-          )}
-
-          <MapView
-            routes={routes} activeMode={activeMode} transportMode={transportMode}
-            mapDark={mapDark} onToggleDark={() => setMapDark(!mapDark)}
-            onMapClick={handleMapClick} pois={pois} poiFilter={poiFilter}
-            clickPhase={clickPhase} startCoords={startCoords} endCoords={endCoords}
-            startName={startName} endName={endName} sidebarOpen={sidebarOpen}
-            navActive={navActive} latestGpsRef={latestGpsRef}
-            onVerifyTrajectory={async (path, gps) => {
-              try { return await verifyTrajectory(path, gps) } catch { return null }
-            }}
-          />
-
-          {routes && (
-            <div className="animate-fadeInUp">
-              <RouteInfo
-                routes={routes} activeMode={activeMode}
-                setActiveMode={setActiveMode} transportMode={transportMode}
-                startName={startName} endName={endName}
-              />
-            </div>
-          )}
-
-          <XAIPanel xaiData={xaiData} loading={xaiLoading} safetyMode={safetyMode} />
-        </div>
+      {/* Floating left sidebar */}
+      <div className="absolute top-5 left-5 z-[2000]">
+        <Sidebar
+          startCoords={startCoords} endCoords={endCoords}
+          startName={startName} endName={endName}
+          setStartCoords={setStartCoords} setEndCoords={setEndCoords}
+          setStartName={setStartName} setEndName={setEndName}
+          transportMode={transportMode} setTransportMode={setTransportMode}
+          safetyMode={safetyMode} setSafetyMode={setSafetyMode}
+          onFindRoute={handleFindRoute} loading={loading}
+          onLocSelect={handleLocSelect} onQuickRoute={handleQuickRoute}
+          quickRoutes={QUICK_ROUTES} recentRoutes={recentRoutes}
+          onSwap={handleSwap} onClose={() => setSidebarOpen(false)}
+          navActive={navActive} onStopNav={stopDeadmanTimer}
+        />
       </div>
+
+      {/* Floating right info panel */}
+      {routes && (
+        <div className="absolute top-5 right-5 z-[2000]">
+          <RightPanel
+            routes={routes} activeMode={activeMode} setActiveMode={setActiveMode}
+            transportMode={transportMode} startName={startName} endName={endName}
+            xaiData={xaiData} loading={xaiLoading}
+          />
+        </div>
+      )}
+
+      {/* Floating bottom-left summary card */}
+      {routes && (
+        <div className="absolute bottom-5 left-[324px] z-[2000]">
+          <BottomSummary routes={routes} activeMode={activeMode} transportMode={transportMode} />
+        </div>
+      )}
 
       {/* Dead-man Safety Modal */}
       <SafetyModal

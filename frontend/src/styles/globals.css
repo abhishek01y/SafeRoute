@@ -4,16 +4,17 @@
 
 :root {
   --foreground: #f1f5f9;
-  --background: #0f172a;
-  --glass-bg: rgba(30, 41, 59, 0.7);
-  --glass-border: rgba(71, 85, 105, 0.4);
-  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  --accent: #3b82f6;
-  --accent-glow: rgba(59, 130, 246, 0.4);
-  --safe: #22c55e;
-  --warning: #eab308;
-  --danger: #ef4444;
-  --radius: 12px;
+  --background: #0a0f19;
+  --glass-bg: rgba(10, 15, 25, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+  --accent: #00ff88;
+  --accent-glow: rgba(0, 255, 136, 0.25);
+  --accent-dim: rgba(0, 255, 136, 0.08);
+  --safe: #00ff66;
+  --warning: #ff8800;
+  --danger: #ff3333;
+  --radius: 16px;
 }
 
 * { box-sizing: border-box; }
@@ -28,7 +29,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Glass card */
 .glass {
   background: var(--glass-bg);
   backdrop-filter: blur(16px);
@@ -38,51 +38,78 @@ body {
 }
 
 .glass-hover:hover {
-  background: rgba(30, 41, 59, 0.85);
-  border-color: rgba(59, 130, 246, 0.3);
+  background: rgba(10, 15, 25, 0.9);
+  border-color: rgba(0, 255, 136, 0.15);
 }
 
-/* Glow effects */
-.glow-blue { box-shadow: 0 0 20px rgba(59, 130, 246, 0.3); }
-.glow-green { box-shadow: 0 0 20px rgba(34, 197, 94, 0.3); }
-.glow-red { box-shadow: 0 0 20px rgba(239, 68, 68, 0.3); }
-.glow-amber { box-shadow: 0 0 20px rgba(245, 158, 11, 0.3); }
+.glass-green {
+  background: rgba(0, 255, 136, 0.06);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 255, 136, 0.12);
+  box-shadow: 0 0 30px rgba(0, 255, 136, 0.04);
+}
 
-/* Text gradient */
+.glass-card {
+  background: rgba(10, 15, 25, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 18px;
+  box-shadow: 0 8px 48px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.glow-green { box-shadow: 0 0 30px rgba(0, 255, 136, 0.15); }
+.glow-red { box-shadow: 0 0 30px rgba(255, 51, 51, 0.15); }
+.glow-warning { box-shadow: 0 0 30px rgba(255, 136, 0, 0.15); }
+.glow-blue { box-shadow: 0 0 30px rgba(59, 130, 246, 0.15); }
+
 .text-gradient {
-  background: linear-gradient(135deg, #60a5fa, #a78bfa);
+  background: linear-gradient(135deg, #00ff88, #00ccff);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* Animations */
+.text-neon {
+  color: #00ff88;
+  text-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+}
+
+.text-neon-sm {
+  color: #00ff88;
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.2);
+}
+
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(20px); }
+  from { opacity: 0; transform: translateY(24px); }
   to { opacity: 1; transform: translateY(0); }
 }
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
 @keyframes slideInLeft {
-  from { opacity: 0; transform: translateX(-20px); }
+  from { opacity: 0; transform: translateX(-24px); }
   to { opacity: 1; transform: translateX(0); }
 }
 @keyframes slideInRight {
-  from { opacity: 0; transform: translateX(20px); }
+  from { opacity: 0; transform: translateX(24px); }
   to { opacity: 1; transform: translateX(0); }
 }
 @keyframes pulseGlow {
   0%, 100% { box-shadow: 0 0 8px var(--accent-glow); }
-  50% { box-shadow: 0 0 24px var(--accent-glow); }
+  50% { box-shadow: 0 0 32px var(--accent-glow); }
 }
 @keyframes markerPulse {
   0% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.3); opacity: 0.7; }
+  50% { transform: scale(1.25); opacity: 0.8; }
   100% { transform: scale(1); opacity: 1; }
 }
-@keyframes routeDraw {
+@keyframes routeDash {
   from { stroke-dashoffset: var(--path-length); }
   to { stroke-dashoffset: 0; }
 }
@@ -92,7 +119,7 @@ body {
 }
 @keyframes float {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
+  50% { transform: translateY(-4px); }
 }
 @keyframes spinSlow {
   from { transform: rotate(0deg); }
@@ -102,109 +129,126 @@ body {
   from { width: 0%; }
 }
 
-.animate-fadeIn { animation: fadeIn 0.4s ease-out; }
-.animate-fadeInUp { animation: fadeInUp 0.5s ease-out; }
+.animate-fadeIn { animation: fadeIn 0.35s ease-out; }
+.animate-fadeInUp { animation: fadeInUp 0.45s ease-out; }
+.animate-fadeInScale { animation: fadeInScale 0.3s ease-out; }
 .animate-slideInLeft { animation: slideInLeft 0.3s ease-out; }
 .animate-slideInRight { animation: slideInRight 0.3s ease-out; }
-.animate-pulseGlow { animation: pulseGlow 2s infinite; }
-.animate-markerPulse { animation: markerPulse 1.5s infinite; }
+.animate-pulseGlow { animation: pulseGlow 2.5s infinite; }
+.animate-markerPulse { animation: markerPulse 1.8s infinite; }
 .animate-float { animation: float 3s ease-in-out infinite; }
 .animate-spinSlow { animation: spinSlow 3s linear infinite; }
 
 .skeleton {
-  background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+  background: linear-gradient(90deg, #1a1f2e 25%, #242a3a 50%, #1a1f2e 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: #64748b; }
+::-webkit-scrollbar-thumb { background: #2a3040; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #3a4050; }
 
-/* Leaflet overrides */
 .leaflet-container {
   width: 100%;
   height: 100%;
   z-index: 0;
-  background: #0f172a !important;
+  background: #080c14 !important;
 }
 
 .leaflet-control-zoom {
   border: none !important;
-  margin-right: 12px !important;
-  margin-bottom: 12px !important;
+  margin-right: 16px !important;
+  margin-bottom: 16px !important;
+  opacity: 0.75;
 }
 .leaflet-control-zoom a {
-  background: rgba(30, 41, 59, 0.85) !important;
+  background: rgba(10, 15, 25, 0.85) !important;
   color: #e2e8f0 !important;
-  border: 1px solid rgba(71, 85, 105, 0.5) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
   backdrop-filter: blur(8px);
-  width: 36px !important;
-  height: 36px !important;
-  line-height: 36px !important;
-  font-size: 18px !important;
+  width: 38px !important;
+  height: 38px !important;
+  line-height: 38px !important;
+  font-size: 20px !important;
   transition: all 0.2s;
 }
 .leaflet-control-zoom a:hover {
-  background: rgba(59, 130, 246, 0.3) !important;
-  color: #60a5fa !important;
+  background: rgba(0, 255, 136, 0.12) !important;
+  color: #00ff88 !important;
 }
-.leaflet-control-zoom a:first-child { border-radius: 8px 8px 0 0 !important; }
-.leaflet-control-zoom a:last-child { border-radius: 0 0 8px 8px !important; }
+.leaflet-control-zoom a:first-child { border-radius: 10px 10px 0 0 !important; }
+.leaflet-control-zoom a:last-child { border-radius: 0 0 10px 10px !important; }
 
 .leaflet-control-attribution {
-  background: rgba(15, 23, 42, 0.7) !important;
-  color: #64748b !important;
-  font-size: 10px !important;
-  padding: 2px 8px !important;
+  background: rgba(8, 12, 20, 0.7) !important;
+  color: #4a5568 !important;
+  font-size: 9px !important;
+  padding: 2px 10px !important;
   backdrop-filter: blur(4px);
-  border-radius: 6px 0 0 0 !important;
+  border-radius: 8px 0 0 0 !important;
 }
-.leaflet-control-attribution a { color: #60a5fa !important; }
+.leaflet-control-attribution a { color: #00ff88 !important; }
 
 .leaflet-popup-content-wrapper {
-  background: rgba(30, 41, 59, 0.95) !important;
+  background: rgba(10, 15, 25, 0.95) !important;
   color: #e2e8f0 !important;
-  border: 1px solid rgba(71, 85, 105, 0.5) !important;
-  backdrop-filter: blur(12px);
-  border-radius: 10px !important;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(16px);
+  border-radius: 14px !important;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.5) !important;
   padding: 0 !important;
 }
-.leaflet-popup-content { margin: 12px 16px !important; font-size: 13px; }
-.leaflet-popup-tip { background: rgba(30, 41, 59, 0.95) !important; border: 1px solid rgba(71,85,105,0.5); }
-.leaflet-popup-close-button { color: #64748b !important; top: 8px !important; right: 8px !important; }
+.leaflet-popup-content { margin: 14px 18px !important; font-size: 13px; }
+.leaflet-popup-tip { background: rgba(10, 15, 25, 0.95) !important; border: 1px solid rgba(255,255,255,0.08); }
+.leaflet-popup-close-button { color: #4a5568 !important; top: 8px !important; right: 8px !important; }
+.leaflet-popup-close-button:hover { color: #00ff88 !important; }
 
-/* Distance marker */
 .distance-marker {
-  background: rgba(15, 23, 42, 0.75);
+  background: rgba(10, 15, 25, 0.8);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(71, 85, 105, 0.5);
-  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
   padding: 2px 8px;
-  font-size: 11px;
-  color: #94a3b8;
+  font-size: 10px;
+  color: #7a8494;
   white-space: nowrap;
   pointer-events: none;
 }
 
-/* Input focus ring */
 input:focus, select:focus, textarea:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.15);
 }
 
-/* Button press effect */
 .btn-press:active {
-  transform: scale(0.97);
+  transform: scale(0.96);
 }
 
-/* Route animation polyline */
+.btn-neon {
+  background: rgba(0, 255, 136, 0.1);
+  border: 1px solid rgba(0, 255, 136, 0.2);
+  color: #00ff88;
+  transition: all 0.2s;
+}
+.btn-neon:hover {
+  background: rgba(0, 255, 136, 0.18);
+  border-color: rgba(0, 255, 136, 0.35);
+  box-shadow: 0 0 30px rgba(0, 255, 136, 0.1);
+}
+
 .route-path {
   stroke-dasharray: var(--path-length);
   stroke-dashoffset: var(--path-length);
-  animation: routeDraw 2s ease-out forwards;
+  animation: routeDash 2s ease-out forwards;
+}
+
+.map-dark-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 60%, rgba(8, 12, 20, 0.3) 100%);
+  pointer-events: none;
+  z-index: 1;
 }
